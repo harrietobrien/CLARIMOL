@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/clarimol/__init__.py
+src/clarimol/__main__.py
+src/clarimol.egg-info/PKG-INFO
+src/clarimol.egg-info/SOURCES.txt
+src/clarimol.egg-info/dependency_links.txt
+src/clarimol.egg-info/top_level.txt
+src/clarimol/data/__init__.py
+src/clarimol/eval/__init__.py
+src/clarimol/tasks/__init__.py
+src/clarimol/train/__init__.py
+src/clarimol/utils/__init__.py
