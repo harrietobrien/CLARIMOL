@@ -4,8 +4,50 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clarimol"
-version = "0.0.1"
-requires-python = ">=3.12"
+version = "0.1.0"
+description = "SMILES parsing for molecular LLM pre-training."
+requires-python = ">=3.11"
+dependencies = [
+    # Chemistry
+    "rdkit",
+    "networkx>=3.2",
+    "pubchempy>=1.0",
+    # HTTP
+    "requests>=2.31",
+    # ML / Training
+    "torch>=2.1",
+    "transformers>=4.44",
+    "peft>=0.12",
+    "trl>=0.9",
+    "datasets>=3.0",
+    "accelerate>=0.30",
+    "bitsandbytes>=0.43",
+    # Evaluation
+    "nltk>=3.8",
+    "Levenshtein>=0.25",
+    "scikit-learn>=1.4",
+    # Config
+    "pyyaml>=6.0",
+    # Utilities
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "tqdm",
+    "wandb>=0.17",
+]
+
+[project.optional-dependencies]
+unsloth = ["unsloth>=2024.9"]
+dev = ["pytest", "ruff", "mypy"]
+
+[project.scripts]
+clarimol = "clarimol.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

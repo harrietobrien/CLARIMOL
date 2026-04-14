@@ -1,1 +1,14 @@
+# JetBrains IDE
 .idea
+__pycache__
+*.pyc
+*.egg-info
+.eggs/
+
+# Including JSON data rn for visibility
+# data/clarimol/*.json
+
+# Environment (just in case)
+# anaconda3 recommended
+.venv/
+*.env

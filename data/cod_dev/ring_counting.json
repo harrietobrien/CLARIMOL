@@ -1,0 +1,332 @@
+[
+  {
+    "smiles": "Cc1ccc(S(=O)c2ccc(N)cc2)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "O=C(Nc1ccc(Cl)cc1)c1ccccc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "O=S(CCS(=O)(=O)c1ccccc1)c1ccc(Cl)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "O=S(=O)(CCSc1ccc(Cl)cc1)c1ccccc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "COC1(C)OC(=O)C=C1C1CCC(C)(Cl)C(Br)C1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "CCCn1c(O)c(C(C)=NNC(=O)OCc2ccccc2)sc1=S",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "COc1ccc(-c2cc(I)cn2C(=O)OC(C)(C)C)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "CCOC(=O)c1sc(=NC(=O)c2ccccc2)oc1C",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "CCCCCCc1nc2c(Br)sc(Br)c2nc1CCCCCC",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 2.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "CCCCCCc1cc(Br)c(Cc2cc(OC)c(Cc3sc(CCCCCC)cc3Br)cc2OC)s1",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "Cc1cc(=O)n2cc(SCc3ccccc3)nc2[nH]1",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "N#CCOc1nc(SCc2ccccc2)nc(N)c1-c1ccccc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 3
+    }
+  },
+  {
+    "smiles": "C=C1CN(S(=O)(=O)c2ccc(C)cc2)CC2CCCC12",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "CCOC(=O)c1c(OP(=O)(N(C)C)N(C)C)c(-c2ccccc2)nc2ccccc12",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 3
+    }
+  },
+  {
+    "smiles": "CCCCCCCC(=O)n1c2ccsc2c2sccc21",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 3
+    }
+  },
+  {
+    "smiles": "Cc1ccc(S(=O)(=O)N2CC3(C2)OCC3O)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "COCC1C=CC2C3C=CC(O3)C2C1OC(=O)NC(=O)C(Cl)(Cl)Cl",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "CC1CC2CC(=O)C3CCCN(C(=O)OC(C)(C)C)CCCC23C(O[Si](C(C)C)(C(C)C)C(C)C)C1",
+    "task": "ring_counting",
+    "question": "How many 9-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 3.0,
+    "metadata": {
+      "ring_size": 9,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "CCCCCCCCN1C(=O)c2csc(-c3scc4c3C(=O)N(CCCCCCCC)C4=O)c2C1=O",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "4",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 4
+    }
+  },
+  {
+    "smiles": "CCOC(C(NS(=O)(=O)c1ccc([N+](=O)[O-])cc1)c1ccccc1)N(c1ccccc1)S(=O)(=O)c1ccccc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "4",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 4
+    }
+  },
+  {
+    "smiles": "Cc1cc(=O)n2cc(SCc3ccccc3)n(C3CCCC3)c2n1",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "CNc1nn2c3c(c(C)nc2c1S(=O)(=O)c1ccccc1)CCC3",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "Cc1nc2c(S(=O)(=O)c3ccccc3)c(N(C)C)nn2c2c1CCC2",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "COc1ccc2c(n1)CC1CC(C)C(I)C3OC(=O)CC213",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "2",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 2
+    }
+  },
+  {
+    "smiles": "O=C(c1ccccc1)n1c2ccsc2c2sccc21",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "1",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 1
+    }
+  },
+  {
+    "smiles": "O=C(C1CCCCC1)n1c2ccsc2c2sccc21",
+    "task": "ring_counting",
+    "question": "How many 5-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 5,
+      "count": 3
+    }
+  },
+  {
+    "smiles": "COc1ccc2c3c([nH]c2c1)C(c1cccc(Br)c1)N(C(=O)OC(C)(C)C)CC3",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 3
+    }
+  },
+  {
+    "smiles": "COC(=O)C=C1Sc2ccccc2C(c2ccccc2)N1S(=O)(=O)c1ccc(C)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "4",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 4
+    }
+  },
+  {
+    "smiles": "Cc1ccc(S(=O)(=O)C=C2Sc3ccccc3C(C(C)C)N2S(=O)(=O)c2ccc(C)cc2)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "4",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 4
+    }
+  },
+  {
+    "smiles": "Cc1ccc(S(=O)(=O)N2C=Cc3ccccc3C2C2(C)C=CC(=O)O2)cc1",
+    "task": "ring_counting",
+    "question": "How many 6-membered rings are in the molecule represented by this SMILES? Answer with an integer only.",
+    "answer": "3",
+    "difficulty": 4.0,
+    "metadata": {
+      "ring_size": 6,
+      "count": 3
+    }
+  }
+]

@@ -1,0 +1,51 @@
+# Functional Group Definitions
+# name: SMARTS pattern
+# (used by FunctionalGroup for substructure matching)
+
+# Oxygen-containing
+hydroxyl: "[OX2H]"
+carbonyl: "[CX3]=[OX1]"
+carboxyl: "[CX3](=O)[OX2H1]"
+aldehyde: "[CX3H1](=O)[#6]"
+ketone: "[#6][CX3](=O)[#6]"
+ester: "[#6][CX3](=O)[OX2H0][#6]"
+ether: "[OD2]([#6])[#6]"
+phenol: "[OX2H][cX3]:[c]"
+enol: "[OX2H][#6X3]=[#6]"
+epoxide: "[OX2r3]1[#6r3][#6r3]1"
+anhydride: "[CX3](=[OX1])[OX2][CX3](=[OX1])"
+acyl_chloride: "[CX3](=[OX1])[Cl]"
+lactone: "[#6][#6X3R](=[OX1])[#8X2R]"
+
+# Nitrogen-containing
+amine_primary: "[NX3;H2;!$(NC=O)]"
+amine_secondary: "[NX3;H1;!$(NC=O)]"
+amine_tertiary: "[NX3;H0;!$(NC=O)]"
+amide: "[NX3][CX3](=[OX1])[#6]"
+nitro: "[$([NX3](=O)=O),$([NX3+](=O)[O-])][!#8]"
+nitrile: "[NX1]#[CX2]"
+imine: "[CX3;$([C]([#6])[#6]),$([CH][#6])]=[NX2][#6]"
+lactam: "[#6][#6X3R](=[OX1])[#7X3R]"
+azide: "[NX1]=[NX2]=[NX1]"
+hydrazine: "[NX3][NX3]"
+oxime: "[CX3]=[NX2][OX2H]"
+urea: "[#7X3][CX3](=[OX1])[#7X3]"
+carbamate: "[#7X3][CX3](=[OX1])[OX2H0]"
+
+# Sulfur-containing
+thiol: "[#16X2H]"
+sulfide: "[#16X2H0]"
+sulfonyl: "[$([#16X4](=[OX1])=[OX1]),$([#16X4+2]([OX1-])([OX1-]))]"
+sulfonamide: "[$([#16X4]([NX3])(=[OX1])(=[OX1])),$([#16X4+2]([NX3])([OX1-])([OX1-]))]"
+
+# Phosphorus-containing
+phosphate: "[$(P(=[OX1])([OX2H])(O)(O)),$(P(=[OX1])([OX2H])([OX2H])(O))]"
+
+# Halogens
+halide_F: "[F]"
+halide_Cl: "[Cl]"
+halide_Br: "[Br]"
+halide_I: "[I]"
+
+# Ring systems
+aromatic_ring: "a1aaaaa1"

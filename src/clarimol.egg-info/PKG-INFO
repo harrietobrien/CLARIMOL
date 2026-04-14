@@ -1,4 +1,30 @@
 Metadata-Version: 2.4
 Name: clarimol
-Version: 0.0.1
-Requires-Python: >=3.12
+Version: 0.1.0
+Summary: SMILES parsing for molecular LLM pre-training.
+Requires-Python: >=3.11
+Requires-Dist: rdkit
+Requires-Dist: networkx>=3.2
+Requires-Dist: pubchempy>=1.0
+Requires-Dist: requests>=2.31
+Requires-Dist: torch>=2.1
+Requires-Dist: transformers>=4.44
+Requires-Dist: peft>=0.12
+Requires-Dist: trl>=0.9
+Requires-Dist: datasets>=3.0
+Requires-Dist: accelerate>=0.30
+Requires-Dist: bitsandbytes>=0.43
+Requires-Dist: nltk>=3.8
+Requires-Dist: Levenshtein>=0.25
+Requires-Dist: scikit-learn>=1.4
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: numpy>=1.26
+Requires-Dist: pandas>=2.1
+Requires-Dist: tqdm
+Requires-Dist: wandb>=0.17
+Provides-Extra: unsloth
+Requires-Dist: unsloth>=2024.9; extra == "unsloth"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
