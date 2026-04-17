@@ -2,191 +2,28 @@
 Prompt templates and instruction formatting for SMILES parsing tasks.
 
 Each task type has:
-  - A system prompt constraining the answer format
-  - Multiple instruction paraphrases (selected randomly during data construction)
+  - A system prompt constraining the answer format (system_prompts.yaml)
+  - Multiple instruction paraphrases (instructions.yaml)
   - A message builder that produces the chat-template dict list
 """
 
 from __future__ import annotations
 import random
+from pathlib import Path
+import yaml
 from clarimol.data.sample import Sample
 
 
-
-# System prompts — constrain answer format per task type
-SYSTEM_PROMPTS: dict[str, str] = {
-    "functional_group": "Answer only in 'Yes' or 'No' without any other information.",
-    "ring_counting": "Answer only with the corresponding integer number without any other information.",
-    "chain_length": "Answer only with the corresponding integer number without any other information.",
-    "canonicalization": "Answer only with the corresponding SMILES string without any other information.",
-    "fragment_assembly": "Answer only with the corresponding SMILES string without any other information.",
-}
+_TASKS_DIR = Path(__file__).parent
 
 
-# Instruction paraphrases — reduces overfitting to specific phrasings
-_INSTRUCTIONS: dict[str, list[str]] = {
-    "functional_group": [
-        (
-            "Does the molecule represented by this SMILES contain "
-            "the specified functional group? Respond with 'Yes' or 'No'.\n"
-            "**SMILES:** {smiles}\n**FUNCTIONAL GROUP:** {fg_info}"
-        ),
-        (
-            "Determine the inclusion of the indicated functional group "
-            "in the given SMILES string. Answer 'Yes' or 'No'.\n"
-            "**SMILES:** {smiles}\n**FUNCTIONAL GROUP:** {fg_info}"
-        ),
-        (
-            "Given the SMILES below, determine whether the functional group "
-            "{fg_info} is present. Respond 'Yes' or 'No'.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Check if the molecule encoded by this SMILES includes the "
-            "functional group {fg_info}. Answer with 'Yes' or 'No' only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Is the functional group {fg_info} contained in the molecule "
-            "represented by the following SMILES? Answer 'Yes' or 'No'.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Examine the SMILES string below and indicate whether it contains "
-            "the functional group {fg_info}. Respond with only 'Yes' or 'No'.\n"
-            "**SMILES:** {smiles}"
-        ),
-    ],
-    "ring_counting": [
-        (
-            "Assess the SMILES below and report how many rings consist of "
-            "{ring_size} atoms. Give me the integer only.\n"
-            "**SMILES:** {smiles}\n**SIZE OF RINGS:** {ring_size}"
-        ),
-        (
-            "Calculate the count of {ring_size}-membered rings in the given "
-            "SMILES string.\n"
-            "**SMILES:** {smiles}\n**RING SIZE:** {ring_size}"
-        ),
-        (
-            "How many {ring_size}-membered rings does the molecule encoded by "
-            "this SMILES contain? Provide only the number.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Count the number of rings with exactly {ring_size} atoms in the "
-            "molecule below. Answer with a single integer.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "For the molecule represented by the following SMILES, determine "
-            "how many {ring_size}-membered rings are present. Integer only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Tell me the number of {ring_size}-membered rings in the molecule "
-            "described by this SMILES string. Answer with just the count.\n"
-            "**SMILES:** {smiles}"
-        ),
-    ],
-    "chain_length": [
-        (
-            "Report the size of the largest carbon-only chain not contained "
-            "within a ring in the molecule represented by this SMILES. "
-            "Answer with an integer only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "What is the length of the longest acyclic carbon chain in the "
-            "molecule encoded by this SMILES? Give the integer only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Determine the longest straight carbon chain (excluding ring atoms) "
-            "in the following molecule. Provide only the integer length.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "For the molecule below, find the longest chain composed exclusively "
-            "of carbon atoms that are not part of any ring. Answer with an integer.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Measure the length of the longest non-ring carbon chain in the "
-            "molecule represented by this SMILES. Respond with the count only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Identify the longest acyclic carbon chain in this molecule and "
-            "report its length as a single integer.\n"
-            "**SMILES:** {smiles}"
-        ),
-    ],
-    "canonicalization": [
-        (
-            "Give me a canonicalized SMILES string that represents the same "
-            "molecule as the given one.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Convert the following SMILES to its canonical form.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Provide the canonical SMILES representation for the molecule "
-            "encoded by this SMILES string.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Transform the SMILES below into its standard canonical form. "
-            "Answer with only the canonical SMILES.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Produce the canonical SMILES equivalent of the given molecular "
-            "string.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Rewrite the following SMILES in canonical form. Return only "
-            "the resulting SMILES.\n"
-            "**SMILES:** {smiles}"
-        ),
-    ],
-    "fragment_assembly": [
-        (
-            "Connect the following two SMILES fragments into a unified "
-            "structure at their reactive sites.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Combine the two molecular fragments below into a single valid "
-            "molecule. Answer with the resulting SMILES only.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Assemble the following pair of SMILES fragments into one "
-            "complete molecule by joining at the indicated attachment points.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Given two disconnected SMILES fragments, reconstruct the full "
-            "molecule by connecting them at their reactive sites.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Join these two molecular fragments into one structure. Provide "
-            "the complete SMILES string.\n"
-            "**SMILES:** {smiles}"
-        ),
-        (
-            "Merge the two SMILES fragments below into a single valid "
-            "molecular structure.\n"
-            "**SMILES:** {smiles}"
-        ),
-    ],
-}
+def _load_yaml(filename: str) -> dict:
+    with open(_TASKS_DIR / filename) as f:
+        return yaml.safe_load(f)
 
+
+SYSTEM_PROMPTS: dict[str, str] = _load_yaml("system_prompts.yaml")
+_INSTRUCTIONS: dict[str, list[str]] = _load_yaml("instructions.yaml")
 
 
 # Formatting
@@ -245,5 +82,4 @@ def build_messages(
         messages.append({"role": "system", "content": sys_prompt})
     messages.append({"role": "user", "content": instruction})
     messages.append({"role": "assistant", "content": sample.answer})
-
     return messages

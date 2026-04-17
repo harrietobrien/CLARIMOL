@@ -5,10 +5,23 @@ __pycache__
 *.egg-info
 .eggs/
 
-# Including JSON data rn for visibility
-# data/clarimol/*.json
+data/
+
+# Training outputs
+output/
+
+# Any logs
+*.log
 
 # Environment (just in case)
 # anaconda3 recommended
 .venv/
 *.env
+
+# Unsloth auto-generates patched trainers here on first import;
+# GPU-specific and not portable
+unsloth_compiled_cache.bak
+unsloth_compiled_cache
+
+# not using right now
+training_ecu

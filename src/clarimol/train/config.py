@@ -46,7 +46,7 @@ class TrainConfig:
         ]
     )
     data_dir: str = "data/clarimol"
-    select_sample: int = 50_000
+    select_sample: int | None = None
     test_val_sample: int = 10_000
     seed: int = 42
     # Output
@@ -58,4 +58,5 @@ class TrainConfig:
     wandb_project: str = "clarimol"
     # Hardware
     gradient_checkpointing: bool = True  # saves VRAM on P100
+    packing: bool = False  # pack multiple sequences per batch (big speedup)
     use_unsloth: bool = True

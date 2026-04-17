@@ -1,20 +1,30 @@
+"""
+Downstream task evaluation for molecular generation.
+
+Evaluates on Mol-Instructions test splits using the metrics from Table 4:
+    Exact match, BLEU, Levenshtein, MACCS FTS, RDK FTS, Morgan FTS, Validity
+"""
+
 from __future__ import annotations
+import json
 import logging
 import random
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 import torch
 from tqdm import tqdm
-from clarimol.data.dataset import load_dataset_from_disk
-from clarimol.data.sample import Sample
-from clarimol.eval.metrics import ParsingResult, evaluate_parsing
-from clarimol.tasks.prompts import build_messages
+from clarimol.data.downstream import (
+    DownstreamSample,
+    load_mol_instructions,
+    build_downstream_messages,
+)
+from clarimol.eval.metrics import GenerationResult, evaluate_generation
 
 logger = logging.getLogger(__name__)
 
 
 def _load_model_for_inference(model_path: str, use_unsloth: bool = True):
-    """Load a trained model + tokenizer for inference"""
+    """Load a trained model + tokenizer for inference."""
     if use_unsloth:
         try:
             from unsloth import FastLanguageModel
@@ -41,23 +51,22 @@ def _load_model_for_inference(model_path: str, use_unsloth: bool = True):
 
 
 @torch.inference_mode()
-def generate_predictions(
+def generate_downstream_predictions(
     model,
     tokenizer,
-    samples: list[Sample],
-    max_new_tokens: int = 128,
+    samples: list[DownstreamSample],
+    max_new_tokens: int = 256,
     temperature: float = 0.2,
-    batch_size: int = 8,
+    batch_size: int = 4,
 ) -> list[str]:
-    """Run batch inference over samples + return raw model outputs"""
-    rng = random.Random(0)
+    """Run batch inference on downstream samples."""
     predictions: list[str] = []
     for i in tqdm(range(0, len(samples), batch_size), desc="Inference"):
         batch = samples[i : i + batch_size]
         prompts: list[str] = []
         for sample in batch:
-            messages = build_messages(sample, rng=rng, use_system_prompt=True)
-            # Remove the assistant turn (what we want the model to generate)
+            messages = build_downstream_messages(sample, use_system_prompt=True)
+            # Remove assistant turn
             messages_no_answer = [m for m in messages if m["role"] != "assistant"]
             try:
                 prompt = tokenizer.apply_chat_template(
@@ -71,7 +80,6 @@ def generate_predictions(
                 )
                 prompt += "\n<|assistant|>\n"
             prompts.append(prompt)
-        # Tokenize
         inputs = tokenizer(
             prompts,
             return_tensors="pt",
@@ -79,7 +87,6 @@ def generate_predictions(
             truncation=True,
             max_length=2048 - max_new_tokens,
         ).to(model.device)
-        # Generate
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
@@ -87,7 +94,6 @@ def generate_predictions(
             do_sample=temperature > 0,
             pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
         )
-        # Decode only the newly generated tokens
         for j, output in enumerate(outputs):
             input_len = inputs["input_ids"][j].shape[0]
             generated = output[input_len:]
@@ -96,42 +102,45 @@ def generate_predictions(
     return predictions
 
 
-def evaluate_model(
+def evaluate_downstream(
     model_path: str,
     data_dir: str,
+    tasks: list[str] | None = None,
     use_unsloth: bool = True,
     max_samples: int | None = None,
-    batch_size: int = 8,
-) -> dict[str, ParsingResult]:
+    batch_size: int = 4,
+) -> dict[str, GenerationResult]:
     """
-    Evaluation Pipeline: load model, run inference, compute metrics.
+    Evaluate a model on downstream molecular generation tasks.
 
-    :param: model_path: Path to saved model checkpoint
-    :param: data_dir: Directory with task JSON files
-    :param: use_unsloth: Try Unsloth for faster inference
-    :param: max_samples: Cap samples per task (for quick eval)
-    :param: batch_size: Inference batch size
-
-    :return: Dict mapping task name to ParsingResult
+    :param model_path: Path to fine-tuned model checkpoint
+    :param data_dir: Directory with Mol-Instructions JSON files
+    :param tasks: Which tasks to evaluate (default: all three)
+    :param use_unsloth: Try Unsloth for faster inference
+    :param max_samples: Cap samples per task
+    :param batch_size: Inference batch size
+    :return: Dict mapping task name to GenerationResult
     """
     logger.info("Loading model from %s", model_path)
     model, tokenizer = _load_model_for_inference(model_path, use_unsloth)
-    logger.info("Loading test data from %s", data_dir)
-    all_samples = load_dataset_from_disk(data_dir)
-    results: dict[str, ParsingResult] = {}
-    for task_name, samples in all_samples.items():
+
+    all_data = load_mol_instructions(data_dir, tasks=tasks, split="test")
+    results: dict[str, GenerationResult] = {}
+
+    for task_name, samples in all_data.items():
         if max_samples:
             samples = samples[:max_samples]
-        logger.info("Evaluating %s (%d samples)", task_name, len(samples))
-        predictions = generate_predictions(
-            model, tokenizer, samples,
-            batch_size=batch_size,
+        logger.info("Evaluating %s (%d test samples)", task_name, len(samples))
+        predictions = generate_downstream_predictions(
+            model, tokenizer, samples, batch_size=batch_size,
         )
-        references = [s.answer for s in samples]
-        result = evaluate_parsing(predictions, references, task_name)
+        references = [s.output for s in samples]
+        result = evaluate_generation(predictions, references)
         results[task_name] = result
         logger.info(
-            "  %s: accuracy=%.4f (%d/%d)",
-            task_name, result.accuracy, result.correct, result.total,
+            "  %s: exact=%.3f  bleu=%.3f  lev=%.2f  maccs=%.3f  rdk=%.3f  morgan=%.3f  valid=%.3f",
+            task_name,
+            result.exact_match, result.bleu, result.levenshtein,
+            result.maccs_fps, result.rdk_fps, result.morgan_fps, result.validity,
         )
     return results

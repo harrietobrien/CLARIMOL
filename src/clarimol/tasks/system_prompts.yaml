@@ -1,0 +1,5 @@
+functional_group: "Answer only in 'Yes' or 'No' without any other information."
+ring_counting: "Answer only with the corresponding integer number without any other information."
+chain_length: "Answer only with the corresponding integer number without any other information."
+canonicalization: "Answer only with the corresponding SMILES string without any other information."
+fragment_assembly: "Answer only with the corresponding SMILES string without any other information."

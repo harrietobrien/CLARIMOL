@@ -63,7 +63,35 @@ def cmd_train(args: argparse.Namespace) -> None:
     from clarimol.train.trainer import run_training
     config = TrainConfig(
         model_name=args.model,
+        model_max_length=args.max_length,
         data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum,
+        learning_rate=args.lr,
+        epochs=args.epochs,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        fp16=not args.no_fp16,
+        use_wandb=not args.no_wandb,
+        seed=args.seed,
+        gradient_checkpointing=not args.no_grad_ckpt,
+        packing=args.packing,
+        select_sample=args.select_sample,
+        use_unsloth=not args.no_unsloth,
+    )
+    run_training(config)
+
+
+def cmd_downstream_train(args: argparse.Namespace) -> None:
+    """Fine-tune a model on a downstream molecular generation task"""
+    from clarimol.utils.io import setup_logging
+    setup_logging(args.log_level)
+    from clarimol.train.downstream import DownstreamConfig, run_downstream_training
+    config = DownstreamConfig(
+        model_name=args.model,
+        data_dir=args.data_dir,
+        task=args.task,
         output_dir=args.output_dir,
         batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum,
@@ -76,7 +104,47 @@ def cmd_train(args: argparse.Namespace) -> None:
         gradient_checkpointing=not args.no_grad_ckpt,
         use_unsloth=not args.no_unsloth,
     )
-    run_training(config)
+    run_downstream_training(config)
+
+
+def cmd_downstream_eval(args: argparse.Namespace) -> None:
+    """Evaluate a model on downstream molecular generation tasks"""
+    from clarimol.utils.io import setup_logging
+    setup_logging(args.log_level)
+    import json
+    import logging
+    from clarimol.eval.downstream import evaluate_downstream
+    logger = logging.getLogger(__name__)
+    tasks = args.tasks.split(",") if args.tasks else None
+    results = evaluate_downstream(
+        model_path=args.model_path,
+        data_dir=args.data_dir,
+        tasks=tasks,
+        use_unsloth=not args.no_unsloth,
+        max_samples=args.max_samples,
+        batch_size=args.batch_size,
+    )
+    print("\nDownstream Evaluation Results . . .")
+    for task_name, r in results.items():
+        print(f"  {task_name}:")
+        print(f"    exact={r.exact_match:.3f}  bleu={r.bleu:.3f}  lev={r.levenshtein:.2f}")
+        print(f"    maccs={r.maccs_fps:.3f}  rdk={r.rdk_fps:.3f}  morgan={r.morgan_fps:.3f}")
+        print(f"    validity={r.validity:.3f}")
+    if args.output_file:
+        out = {}
+        for name, r in results.items():
+            out[name] = {
+                "exact_match": r.exact_match,
+                "bleu": r.bleu,
+                "levenshtein": r.levenshtein,
+                "maccs_fps": r.maccs_fps,
+                "rdk_fps": r.rdk_fps,
+                "morgan_fps": r.morgan_fps,
+                "validity": r.validity,
+            }
+        with open(args.output_file, "w") as f:
+            json.dump(out, f, indent=2)
+        logger.info("Results saved to %s", args.output_file)
 
 
 def cmd_evaluate(args: argparse.Namespace) -> None:
@@ -153,7 +221,11 @@ def main() -> None:
     p_train.add_argument("--lora-alpha", type=int, default=16)
     p_train.add_argument("--no-wandb", action="store_true")
     p_train.add_argument("--no-grad-ckpt", action="store_true")
+    p_train.add_argument("--max-length", type=int, default=2048, help="Max sequence length")
+    p_train.add_argument("--no-fp16", action="store_true", help="Disable fp16 AMP (use fp32)")
     p_train.add_argument("--no-unsloth", action="store_true")
+    p_train.add_argument("--packing", action="store_true", help="Pack sequences to reduce padding waste")
+    p_train.add_argument("--select-sample", type=int, default=None, help="Max samples per task (default: all)")
     p_train.add_argument("--seed", type=int, default=42)
     # Evaluate
     p_eval = sub.add_parser("evaluate", help="Evaluate a trained model")
@@ -163,6 +235,32 @@ def main() -> None:
     p_eval.add_argument("--batch-size", type=int, default=8)
     p_eval.add_argument("--max-samples", type=int, default=None, help="Cap samples per task")
     p_eval.add_argument("--no-unsloth", action="store_true")
+    # Downstream train
+    p_ds_train = sub.add_parser("downstream-train", help="Fine-tune on a downstream task")
+    p_ds_train.add_argument("--model", required=True, help="Pre-trained model or base model path")
+    p_ds_train.add_argument("--data-dir", default="data/mol_instructions")
+    p_ds_train.add_argument("--task", required=True,
+                            choices=["retrosynthesis", "reagent_prediction", "forward_reaction_prediction"])
+    p_ds_train.add_argument("--output-dir", default="output/downstream")
+    p_ds_train.add_argument("--batch-size", type=int, default=8)
+    p_ds_train.add_argument("--grad-accum", type=int, default=2)
+    p_ds_train.add_argument("--lr", type=float, default=5e-4)
+    p_ds_train.add_argument("--epochs", type=int, default=1)
+    p_ds_train.add_argument("--lora-r", type=int, default=64)
+    p_ds_train.add_argument("--lora-alpha", type=int, default=16)
+    p_ds_train.add_argument("--no-wandb", action="store_true")
+    p_ds_train.add_argument("--no-grad-ckpt", action="store_true")
+    p_ds_train.add_argument("--no-unsloth", action="store_true")
+    p_ds_train.add_argument("--seed", type=int, default=42)
+    # Downstream evaluate
+    p_ds_eval = sub.add_parser("downstream-eval", help="Evaluate on downstream generation tasks")
+    p_ds_eval.add_argument("--model-path", required=True, help="Path to fine-tuned model")
+    p_ds_eval.add_argument("--data-dir", default="data/mol_instructions")
+    p_ds_eval.add_argument("--tasks", default=None, help="Comma-separated task names (default: all)")
+    p_ds_eval.add_argument("--output-file", default=None, help="JSON results output")
+    p_ds_eval.add_argument("--batch-size", type=int, default=4)
+    p_ds_eval.add_argument("--max-samples", type=int, default=None)
+    p_ds_eval.add_argument("--no-unsloth", action="store_true")
 
     args = parser.parse_args()
     if args.command == "prepare":
@@ -171,6 +269,10 @@ def main() -> None:
         cmd_train(args)
     elif args.command == "evaluate":
         cmd_evaluate(args)
+    elif args.command == "downstream-train":
+        cmd_downstream_train(args)
+    elif args.command == "downstream-eval":
+        cmd_downstream_eval(args)
 
 
 if __name__ == "__main__":
