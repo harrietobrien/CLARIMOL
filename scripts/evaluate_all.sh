@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 
 MODEL_PATH="${1:?Usage: evaluate_all.sh <model_path>}"
 echo "Evaluating on ZINC250K test set . . ."
+shift
 python -m clarimol evaluate \
     --model-path "$MODEL_PATH" \
     --data-dir data/test \
