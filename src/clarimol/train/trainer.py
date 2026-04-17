@@ -16,7 +16,6 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import torch
 import trl
 from transformers.models.auto.configuration_auto import replace_list_option_in_docstrings
-from transformers.models.auto.tokenization_auto import TOKENIZER_MAPPING_NAMES
 from clarimol.data.dataset import load_dataset_from_disk
 from clarimol.data.sample import Sample
 from clarimol.tasks.prompts import build_messages
@@ -25,7 +24,6 @@ from clarimol.train.config import TrainConfig
 
 logger = logging.getLogger(__name__)
 
-@replace_list_option_in_docstrings(TOKENIZER_MAPPING_NAMES)
 def _load_model_tokenizer(config: TrainConfig):
     """Load model + tokenizer, applying LoRA. Returns (model, tokenizer)"""
     if config.use_unsloth:
