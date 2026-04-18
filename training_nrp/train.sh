@@ -1,13 +1,13 @@
 #!/bin/bash
-# Optimized training for NRP JupyterHub RTX 2080 Ti (11GB VRAM)
+# Training for NRP JupyterHub NVIDIA Titan Xp (12GB VRAM)
 #
-# RTX 2080 Ti constraints:
-#   - 11GB VRAM (vs P100 16GB) — tighter memory budget
-#   - Turing arch: fp16 tensor cores (2x speedup over P100's Pascal)
-#   - No bf16 support
+# Titan Xp constraints:
+#   - 12GB VRAM — too small for 8B models even at 4-bit
+#   - Pascal arch (CC 6.1): no bf16, no fp16 tensor cores
+#   - Requires PyTorch 2.2.2 (newer versions dropped CC 6.1)
 #
-# Strategy: 4-bit quant + LoRA + packing + short sequences
-# batch=8 fits safely; batch=12 might work but risks OOM.
+# Strategy: Qwen 3B + 4-bit quant + LoRA-16 + batch=1 + grad_accum=16
+# 50K samples (10K/task), fp32 compute, no packing.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -20,19 +20,19 @@ echo "Starting NRP training at $(date)"
 nvidia-smi
 
 python -m clarimol train \
-    --model unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit \
+    --model Qwen/Qwen2.5-3B-Instruct \
     --data-dir data/clarimol \
     --output-dir "$OUTPUT_DIR" \
     --no-unsloth \
-    --packing \
     --max-length 512 \
     --select-sample 10000 \
-    --batch-size 8 \
-    --grad-accum 2 \
+    --batch-size 1 \
+    --grad-accum 16 \
     --lr 5e-4 \
     --epochs 1 \
-    --lora-r 64 \
+    --lora-r 16 \
     --lora-alpha 16 \
+    --no-fp16 \
     --no-wandb \
     --seed 42 \
     2>&1 | tee "$LOG_FILE"
