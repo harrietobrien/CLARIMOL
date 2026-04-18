@@ -44,6 +44,7 @@ for TASK in retrosynthesis reagent_prediction forward_reaction_prediction; do
         --lora-r 64 \
         --lora-alpha 16 \
         --no-wandb \
+        --no-fp16 \
         --seed 42
     echo "=== $TASK complete at $(date) ==="
 done

@@ -102,6 +102,7 @@ def cmd_downstream_train(args: argparse.Namespace) -> None:
         use_wandb=not args.no_wandb,
         seed=args.seed,
         gradient_checkpointing=not args.no_grad_ckpt,
+        fp16=not args.no_fp16,
         use_unsloth=not args.no_unsloth,
     )
     run_downstream_training(config)
@@ -250,6 +251,7 @@ def main() -> None:
     p_ds_train.add_argument("--lora-alpha", type=int, default=16)
     p_ds_train.add_argument("--no-wandb", action="store_true")
     p_ds_train.add_argument("--no-grad-ckpt", action="store_true")
+    p_ds_train.add_argument("--no-fp16", action="store_true", help="Disable fp16 AMP (use fp32)")
     p_ds_train.add_argument("--no-unsloth", action="store_true")
     p_ds_train.add_argument("--seed", type=int, default=42)
     # Downstream evaluate
