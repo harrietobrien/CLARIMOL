@@ -11,6 +11,11 @@ from rdkit import Chem, DataStructs, RDLogger
 from rdkit.Chem import AllChem, MACCSkeys, RDKFingerprint
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from Levenshtein import distance
+try:
+    import selfies as sf
+    HAS_SELFIES = True
+except ImportError:
+    HAS_SELFIES = False
 
 RDLogger.logger().setLevel(RDLogger.ERROR)
 
@@ -57,6 +62,24 @@ def _extract_integer(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _is_selfies(text: str) -> bool:
+    """Check if a string looks like SELFIES (bracketed token format)."""
+    return bool(re.match(r"^\[", text.strip()) and "][" in text)
+
+
+def _selfies_to_smiles(text: str) -> str:
+    """Convert SELFIES string to SMILES. Returns original if conversion fails."""
+    if not HAS_SELFIES:
+        return text
+    try:
+        smiles = sf.decoder(text.strip())
+        if smiles:
+            return smiles
+    except Exception:
+        pass
+    return text
+
+
 def _extract_smiles(text: str) -> str:
     """Extraction attempt of a SMILES string from model output"""
     text = text.strip()
@@ -65,6 +88,9 @@ def _extract_smiles(text: str) -> str:
         line = line.strip()
         # take the first non-empty one
         if line:
+            # Convert SELFIES to SMILES if detected
+            if _is_selfies(line):
+                return _selfies_to_smiles(line)
             return line
     return text
 
@@ -186,8 +212,9 @@ def evaluate_generation(
     maccs_sims: list[float] = list()
     rdk_sims: list[float] = list()
     morgan_sims: list[float] = list()
-    for pred_raw, ref in zip(predictions, references):
+    for pred_raw, ref_raw in zip(predictions, references):
         pred = _extract_smiles(pred_raw)
+        ref = _selfies_to_smiles(ref_raw) if _is_selfies(ref_raw) else ref_raw
         pred_mol = Chem.MolFromSmiles(pred)
         ref_mol = Chem.MolFromSmiles(ref)
         # Canonicalize for exact match

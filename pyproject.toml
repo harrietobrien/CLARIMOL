@@ -25,6 +25,7 @@ dependencies = [
     # Evaluation
     "nltk>=3.8",
     "Levenshtein>=0.25",
+    "selfies>=2.0",
     "scikit-learn>=1.4",
     # Config
     "pyyaml>=6.0",
