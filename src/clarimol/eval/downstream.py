@@ -10,7 +10,8 @@ import json
 import logging
 import random
 from pathlib import Path
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
+from peft import PeftModel
 import torch
 from tqdm import tqdm
 from clarimol.data.downstream import (
@@ -37,10 +38,34 @@ def _load_model_for_inference(model_path: str, use_unsloth: bool = True):
             return model, tokenizer
         except (ImportError, Exception) as e:
             logger.warning("Unsloth inference failed (%s), falling back to HF", e)
-    # noinspection PyTypeChecker
-    tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left", trust_remote_code=True)  # type: PreTrainedTokenizerBase
-    # noinspection PyTypeChecker
-    model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
+
+    # Check if this is a LoRA adapter checkpoint
+    adapter_config_path = Path(model_path) / "adapter_config.json"
+    if adapter_config_path.exists():
+        with open(adapter_config_path) as f:
+            adapter_config = json.load(f)
+        base_model_name = adapter_config["base_model_name_or_path"]
+        logger.info("Loading base model %s with LoRA adapter from %s", base_model_name, model_path)
+        tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left", trust_remote_code=True)
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        base_model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            device_map="auto",
+            quantization_config=bnb_config,
+            trust_remote_code=True,
+        )
+        model = PeftModel.from_pretrained(base_model, model_path)
+        model.eval()
+        return model, tokenizer
+
+    # Plain model (no adapter)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left", trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map="auto",
         torch_dtype=torch.float16,
