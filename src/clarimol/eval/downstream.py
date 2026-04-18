@@ -115,8 +115,7 @@ def generate_downstream_predictions(
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
+            do_sample=False,
             pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
         )
         for j, output in enumerate(outputs):
