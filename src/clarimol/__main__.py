@@ -103,6 +103,7 @@ def cmd_downstream_train(args: argparse.Namespace) -> None:
         seed=args.seed,
         gradient_checkpointing=not args.no_grad_ckpt,
         fp16=not args.no_fp16,
+        max_samples=args.max_samples,
         use_unsloth=not args.no_unsloth,
     )
     run_downstream_training(config)
@@ -249,6 +250,7 @@ def main() -> None:
     p_ds_train.add_argument("--epochs", type=int, default=1)
     p_ds_train.add_argument("--lora-r", type=int, default=64)
     p_ds_train.add_argument("--lora-alpha", type=int, default=16)
+    p_ds_train.add_argument("--max-samples", type=int, default=None, help="Cap training samples")
     p_ds_train.add_argument("--no-wandb", action="store_true")
     p_ds_train.add_argument("--no-grad-ckpt", action="store_true")
     p_ds_train.add_argument("--no-fp16", action="store_true", help="Disable fp16 AMP (use fp32)")

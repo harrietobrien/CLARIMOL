@@ -43,6 +43,7 @@ for TASK in retrosynthesis reagent_prediction forward_reaction_prediction; do
         --epochs 1 \
         --lora-r 64 \
         --lora-alpha 16 \
+        --max-samples 5000 \
         --no-wandb \
         --no-fp16 \
         --seed 42

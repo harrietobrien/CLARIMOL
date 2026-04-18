@@ -60,6 +60,7 @@ class DownstreamConfig:
     # Data
     data_dir: str = "data/mol_instructions"
     task: str = "retrosynthesis"  # single task per fine-tune run
+    max_samples: int | None = None  # cap training samples (None = all)
     seed: int = 42
     # Output
     output_dir: str = "output/downstream"
@@ -211,6 +212,11 @@ def run_downstream_training(config: DownstreamConfig) -> str:
     samples = all_data.get(config.task, [])
     if not samples:
         raise ValueError(f"No training samples found for task: {config.task}")
+    if config.max_samples and len(samples) > config.max_samples:
+        import random
+        rng = random.Random(config.seed)
+        samples = rng.sample(samples, config.max_samples)
+        logger.info("Subsampled %s to %d samples", config.task, config.max_samples)
 
     logger.info("Building HF dataset (%d samples)", len(samples))
     train_ds = _build_hf_dataset(samples, tokenizer, config)
