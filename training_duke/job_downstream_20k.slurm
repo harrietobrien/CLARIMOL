@@ -3,9 +3,9 @@
 #SBATCH --partition=scavenger-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --time=1-00:00:00
 #SBATCH --output=output/duke_ds20k_%j.log
 #SBATCH --error=output/duke_ds20k_%j.err
@@ -30,7 +30,7 @@ echo "Start: $(date)"
 
 for TASK in retrosynthesis reagent_prediction forward_reaction_prediction; do
     echo "=== Training $TASK at $(date) ==="
-    python -m clarimol downstream-train \
+    accelerate launch --num_processes 4 --multi_gpu -m clarimol downstream-train \
         --model "$PRETRAINED" \
         --task "$TASK" \
         --data-dir data/mol_instructions \
