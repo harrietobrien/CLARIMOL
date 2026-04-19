@@ -111,6 +111,11 @@ def _load_model_tokenizer(config: DownstreamConfig):
             bnb_4bit_use_double_quant=True,
         )
 
+    # Detect multi-GPU: let accelerate handle placement instead of device_map="auto"
+    import os
+    multi_gpu = int(os.environ.get("WORLD_SIZE", "1")) > 1
+    device_map = None if multi_gpu else "auto"
+
     # Check if model_name is a PEFT checkpoint (has adapter_config.json)
     model_path = Path(config.model_name)
     is_peft_checkpoint = (model_path / "adapter_config.json").exists()
@@ -122,12 +127,11 @@ def _load_model_tokenizer(config: DownstreamConfig):
         base_model_name = adapter_cfg["base_model_name_or_path"]
         logger.info("Loading base model %s and merging pre-trained adapter from %s",
                      base_model_name, config.model_name)
-        # Load base model
         # noinspection PyTypeChecker
         base_model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
             base_model_name,
             quantization_config=bnb_config,
-            device_map="auto",
+            device_map=device_map,
             trust_remote_code=True,
         )
         # Load and merge the pre-training adapter
@@ -153,7 +157,7 @@ def _load_model_tokenizer(config: DownstreamConfig):
         model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
             config.model_name,
             quantization_config=bnb_config,
-            device_map="auto",
+            device_map=device_map,
             trust_remote_code=True,
         )
 
