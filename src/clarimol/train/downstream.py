@@ -116,15 +116,23 @@ def _load_model_tokenizer(config: DownstreamConfig):
     is_peft_checkpoint = (model_path / "adapter_config.json").exists()
 
     if is_peft_checkpoint:
-        logger.info("Loading pre-trained PEFT model from %s", config.model_name)
-        # Load the base model through the adapter, then merge
+        import json
+        with open(model_path / "adapter_config.json") as f:
+            adapter_cfg = json.load(f)
+        base_model_name = adapter_cfg["base_model_name_or_path"]
+        logger.info("Loading base model %s and merging pre-trained adapter from %s",
+                     base_model_name, config.model_name)
+        # Load base model
         # noinspection PyTypeChecker
-        model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
-            config.model_name,
+        base_model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
+            base_model_name,
             quantization_config=bnb_config,
             device_map="auto",
             trust_remote_code=True,
         )
+        # Load and merge the pre-training adapter
+        model = PeftModel.from_pretrained(base_model, config.model_name)
+        model = model.merge_and_unload()
         # noinspection PyTypeChecker
         tokenizer = AutoTokenizer.from_pretrained(  # type: PreTrainedTokenizerBase
             config.model_name,
