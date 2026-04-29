@@ -1,25 +1,24 @@
 #!/bin/bash
-#SBATCH --job-name=clarimol_h200_2gpu
+#SBATCH --job-name=clarimol_h200_llama
 #SBATCH -A scavenger-h200
 #SBATCH -p scavenger-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --gres=gpu:h200:2
-#SBATCH --time=12:00:00
-#SBATCH --output=output/h200_2gpu_%j.log
-#SBATCH --error=output/h200_2gpu_%j.err
+#SBATCH --gres=gpu:h200:1
+#SBATCH --time=24:00:00
+#SBATCH --output=output/h200_llama_%j.log
+#SBATCH --error=output/h200_llama_%j.err
 #SBATCH --requeue
 #
-# Dual H200: Qwen 2.5-7B on full 250K ZINC dataset across 2 GPUs
-# accelerate handles data-parallel sharding via DDP
-# ~2x throughput vs single GPU → halved wall time
+# Single H200: LLaMA 3.1-8B on full 250K ZINC dataset
+# Cross-model comparison with Qwen 2.5-7B
 #
 # scavenger-h200 jobs may be preempted and requeued.
 # Checkpoints saved every 500 steps; use --resume to continue.
 #
-# Submit:     sbatch training_duke/job_h200_250k_dual.slurm
+# Submit: sbatch training_duke/job_h200_250k_llama.slurm
 #
 # Docs: https://oit-rc.pages.oit.duke.edu/rcsupportdocs/dcc/h200/
 
@@ -34,10 +33,10 @@ module load Anaconda3 2>/dev/null || module load conda 2>/dev/null || true
 eval "$(conda shell.bash hook)"
 conda activate /work/gc237/conda_envs/clarimol
 
-OUTPUT_DIR=output/parsing_pretrain_h200
+OUTPUT_DIR=output/parsing_pretrain_h200_llama
 mkdir -p "$OUTPUT_DIR"
 
-echo "=== CLARIMOL H200 dual-GPU (250K) ==="
+echo "=== CLARIMOL H200 LLaMA 3.1-8B (250K) ==="
 nvidia-smi
 echo "Start: $(date)"
 
@@ -48,11 +47,8 @@ if ls "$OUTPUT_DIR"/checkpoint-* 1>/dev/null 2>&1; then
     RESUME_FLAG="--resume"
 fi
 
-accelerate launch \
-    --num_processes 2 \
-    --multi_gpu \
-    -m clarimol train \
-    --model Qwen/Qwen2.5-7B-Instruct \
+python -m clarimol train \
+    --model meta-llama/Llama-3.1-8B-Instruct \
     --data-dir data/clarimol \
     --output-dir "$OUTPUT_DIR" \
     --no-unsloth \

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=clarimol_h200_1gpu
+#SBATCH --job-name=clarimol_h200_qwen
 #SBATCH -A scavenger-h200
 #SBATCH -p scavenger-h200
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
-#SBATCH --output=output/h200_1gpu_%j.log
-#SBATCH --error=output/h200_1gpu_%j.err
+#SBATCH --output=output/h200_qwen_%j.log
+#SBATCH --error=output/h200_qwen_%j.err
 #SBATCH --requeue
 #
 # Single H200: Qwen 2.5-7B on full 250K ZINC dataset
@@ -19,8 +19,8 @@
 # scavenger-h200 jobs may be preempted and requeued.
 # Checkpoints saved every 500 steps; use --resume to continue.
 #
-# Submit:     sbatch training_duke/job_h200_250k_single.slurm
-# Re-submit:  sbatch training_duke/job_h200_250k_single.slurm --resume
+# Submit:     sbatch training_duke/job_h200_250k_qwen.slurm
+# Re-submit:  sbatch training_duke/job_h200_250k_qwen.slurm --resume
 #
 # Docs: https://oit-rc.pages.oit.duke.edu/rcsupportdocs/dcc/h200/
 
@@ -38,7 +38,7 @@ conda activate /work/gc237/conda_envs/clarimol
 OUTPUT_DIR=output/parsing_pretrain_h200
 mkdir -p "$OUTPUT_DIR"
 
-echo "=== CLARIMOL H200 single-GPU (250K) ==="
+echo "=== CLARIMOL H200 Qwen 2.5-7B (250K) ==="
 nvidia-smi
 echo "Start: $(date)"
 
@@ -57,7 +57,7 @@ python -m clarimol train \
     --max-length 512 \
     --batch-size 16 \
     --grad-accum 1 \
-    --lr 5e-4 \
+    --lr 1e-4 \
     --epochs 1 \
     --lora-r 64 \
     --lora-alpha 16 \
