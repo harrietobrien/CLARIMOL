@@ -79,6 +79,8 @@ def cmd_train(args: argparse.Namespace) -> None:
         packing=args.packing,
         select_sample=args.select_sample,
         use_unsloth=not args.no_unsloth,
+        resume_from_checkpoint=args.resume,
+        save_steps=args.save_steps,
     )
     run_training(config)
 
@@ -228,6 +230,8 @@ def main() -> None:
     p_train.add_argument("--no-unsloth", action="store_true")
     p_train.add_argument("--packing", action="store_true", help="Pack sequences to reduce padding waste")
     p_train.add_argument("--select-sample", type=int, default=None, help="Max samples per task (default: all)")
+    p_train.add_argument("--resume", action="store_true", help="Resume from last checkpoint in output-dir")
+    p_train.add_argument("--save-steps", type=int, default=2000, help="Save checkpoint every N steps")
     p_train.add_argument("--seed", type=int, default=42)
     # Evaluate
     p_eval = sub.add_parser("evaluate", help="Evaluate a trained model")

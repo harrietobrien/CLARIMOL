@@ -60,3 +60,4 @@ class TrainConfig:
     gradient_checkpointing: bool = True  # saves VRAM on P100
     packing: bool = False  # pack multiple sequences per batch (big speedup)
     use_unsloth: bool = True
+    resume_from_checkpoint: bool = False  # resume training from last checkpoint in output_dir

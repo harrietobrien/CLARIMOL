@@ -192,7 +192,7 @@ def run_training(config: TrainConfig) -> str:
         args=training_args,
     )
     logger.info("Starting training...")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=config.resume_from_checkpoint or None)
     # Save final model
     final_path = str(output_dir / "final")
     trainer.save_model(final_path)
