@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/h200_1gpu_%j.log
 #SBATCH --error=output/h200_1gpu_%j.err
 #SBATCH --requeue
@@ -29,6 +29,7 @@ cd "$SLURM_SUBMIT_DIR"
 
 export CONDARC=/work/gc237/.condarc
 export HF_HOME=/work/gc237/.cache/huggingface
+export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token)
 
 module load Anaconda3 2>/dev/null || module load conda 2>/dev/null || true
 eval "$(conda shell.bash hook)"
@@ -54,7 +55,7 @@ python -m clarimol train \
     --output-dir "$OUTPUT_DIR" \
     --no-unsloth \
     --max-length 512 \
-    --batch-size 64 \
+    --batch-size 16 \
     --grad-accum 1 \
     --lr 5e-4 \
     --epochs 1 \

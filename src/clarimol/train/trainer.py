@@ -80,11 +80,13 @@ def _load_model_tokenizer(config: TrainConfig):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     # noinspection PyTypeChecker
+    import os
+    multi_gpu = int(os.environ.get("WORLD_SIZE", "1")) > 1
     model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
         config.model_name,
         quantization_config=bnb_config,
         torch_dtype=torch.float16,
-        device_map="auto",
+        device_map=None if multi_gpu else "auto",
         trust_remote_code=True,
     )
     if config.load_in_4bit:
