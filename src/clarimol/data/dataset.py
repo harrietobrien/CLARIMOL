@@ -94,7 +94,7 @@ def build_dataset(
         pruning = PruningConfig()
     result: dict[str, list[Sample]] = {}
     for task_name, samples in raw.items():
-        result[task_name] = prune_and_sort(samples, pruning)
+        result[task_name] = prune_and_sort(samples, pruning, seed=seed)
         logger.info(
             "Task %s: %d → %d samples after pruning",
             task_name,

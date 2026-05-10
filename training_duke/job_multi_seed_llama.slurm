@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
-#SBATCH --time=72:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/multi_seed_llama_%j.log
 #SBATCH --error=output/multi_seed_llama_%j.err
 #SBATCH --requeue

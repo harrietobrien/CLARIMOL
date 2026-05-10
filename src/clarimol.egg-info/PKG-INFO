@@ -16,6 +16,7 @@ Requires-Dist: accelerate>=0.30
 Requires-Dist: bitsandbytes>=0.43
 Requires-Dist: nltk>=3.8
 Requires-Dist: Levenshtein>=0.25
+Requires-Dist: selfies>=2.0
 Requires-Dist: scikit-learn>=1.4
 Requires-Dist: pyyaml>=6.0
 Requires-Dist: numpy>=1.26
