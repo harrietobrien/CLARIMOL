@@ -67,7 +67,8 @@ python -m clarimol train \
     --lora-alpha 16 \
     --select-sample 10000 \
     --no-wandb \
-    --no-fp16 \
+    --bf16 \
+    --no-4bit \
     --seed 42
 
 # Step 4: Evaluate

@@ -59,7 +59,8 @@ python -m clarimol train \
     --epochs 1 \
     --lora-r 64 \
     --lora-alpha 16 \
-    --no-fp16 \
+    --bf16 \
+    --no-4bit \
     --no-wandb \
     --save-steps 500 \
     --seed 42 \
