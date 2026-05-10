@@ -11,6 +11,7 @@
 #SBATCH --output=output/scaling_%j.log
 #SBATCH --error=output/scaling_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # P2-17: Dataset size scaling curve
 # How much data is enough? Tests {10K, 25K, 50K, 100K, 250K} per task

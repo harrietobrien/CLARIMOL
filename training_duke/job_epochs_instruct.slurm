@@ -11,6 +11,7 @@
 #SBATCH --output=output/epochs_instruct_%j.log
 #SBATCH --error=output/epochs_instruct_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Combined P3-20 + P3-21:
 #   - Multi-epoch training (1, 2, 3 epochs) x (easy-hard, random curriculum)

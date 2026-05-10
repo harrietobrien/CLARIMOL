@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_qwen_%j.log
 #SBATCH --error=output/h200_qwen_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Single H200: Qwen 2.5-7B on full 250K ZINC dataset
 # H200 = 141GB HBM3e — model loads in bf16 (~16GB), no quantization needed

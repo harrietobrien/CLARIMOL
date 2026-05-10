@@ -11,6 +11,7 @@
 #SBATCH --output=output/curriculum_%j.log
 #SBATCH --error=output/curriculum_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # P1-8: Curriculum ordering ablation
 # Compares: easy-hard (default), hard-easy, random, none

@@ -11,6 +11,7 @@
 #SBATCH --output=output/task_contrib_%j.log
 #SBATCH --error=output/task_contrib_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # P1-9: Task contribution analysis
 # Which parsing tasks actually help downstream performance?

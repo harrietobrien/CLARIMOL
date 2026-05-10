@@ -11,6 +11,7 @@
 #SBATCH --output=output/multi_seed_qwen_%j.log
 #SBATCH --error=output/multi_seed_qwen_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Multi-seed Qwen 2.5-7B training (seeds 42, 137, 2024)
 #

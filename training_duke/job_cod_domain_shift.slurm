@@ -11,6 +11,7 @@
 #SBATCH --output=output/cod_shift_%j.log
 #SBATCH --error=output/cod_shift_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # P1-11: COD domain shift experiment
 # Does a ZINC-trained model transfer to crystal molecules?

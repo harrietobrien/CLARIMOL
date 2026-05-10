@@ -11,6 +11,7 @@
 #SBATCH --output=output/lr_lora_%j.log
 #SBATCH --error=output/lr_lora_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Combined P1-10 + P2-16: LR sweep + LoRA rank/alpha ablation
 # LR:   {1e-4, 2e-4, 5e-4} with r=64, alpha=16 (3 runs)
