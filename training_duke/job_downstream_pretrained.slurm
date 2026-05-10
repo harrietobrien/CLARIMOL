@@ -11,6 +11,7 @@
 #SBATCH --output=output/ds_pretrained_%j.log
 #SBATCH --error=output/ds_pretrained_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Downstream fine-tuning FROM a parsing-pretrained model
 # This is the "with pre-training" arm of the ablation.

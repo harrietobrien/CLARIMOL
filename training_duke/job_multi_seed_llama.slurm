@@ -11,6 +11,7 @@
 #SBATCH --output=output/multi_seed_llama_%j.log
 #SBATCH --error=output/multi_seed_llama_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Multi-seed LLaMA 3.1-8B training (seeds 42, 137, 2024)
 # ~20min/seed on H200 → ~1hr total + eval

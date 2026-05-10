@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_70b_%j.log
 #SBATCH --error=output/h200_70b_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # P2-14: 70B model experiment
 # LLaMA 3.1-70B-Instruct in bf16 on single H200 (141GB)

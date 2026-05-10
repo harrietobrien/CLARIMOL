@@ -11,6 +11,7 @@
 #SBATCH --output=output/baselines_%j.log
 #SBATCH --error=output/baselines_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Baseline evaluations (P0-4):
 #   1. Zero-shot eval of untrained LLaMA-8B and Qwen-7B on parsing tasks

@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_2gpu_%j.log
 #SBATCH --error=output/h200_2gpu_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Dual H200: Qwen 2.5-7B on full 250K ZINC dataset across 2 GPUs
 # accelerate handles data-parallel sharding via DDP

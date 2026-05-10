@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_qwen3b_%j.log
 #SBATCH --error=output/h200_qwen3b_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Single H200: Qwen 2.5-3B on full 250K ZINC dataset
 # Size ablation: does parsing pre-training benefit smaller models more or less?

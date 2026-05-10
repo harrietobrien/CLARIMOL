@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_mistral_%j.log
 #SBATCH --error=output/h200_mistral_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Single H200: Mistral 7B v0.3 on full 250K ZINC dataset
 # Third architecture for cross-model comparison (LLaMA vs Qwen vs Mistral)

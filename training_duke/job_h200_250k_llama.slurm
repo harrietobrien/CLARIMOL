@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_llama_%j.log
 #SBATCH --error=output/h200_llama_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Single H200: LLaMA 3.1-8B on full 250K ZINC dataset
 # Cross-model comparison with Qwen 2.5-7B

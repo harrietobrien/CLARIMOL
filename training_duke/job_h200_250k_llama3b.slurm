@@ -11,6 +11,7 @@
 #SBATCH --output=output/h200_llama3b_%j.log
 #SBATCH --error=output/h200_llama3b_%j.err
 #SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Single H200: LLaMA 3.2-3B on full 250K ZINC dataset
 # Size ablation: paired with Qwen 3B for cross-arch at smaller scale
