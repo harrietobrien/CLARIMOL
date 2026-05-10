@@ -62,12 +62,13 @@ def _load_model_tokenizer(config: TrainConfig):
             return model, tokenizer
         except ImportError:
             logger.warning("Unsloth not available, falling back to standard HF + PEFT")
+    compute_dtype = torch.bfloat16 if config.bf16 else torch.float16
     bnb_config = None
     if config.load_in_4bit:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_use_double_quant=True,
         )
     # noinspection PyTypeChecker
@@ -85,7 +86,7 @@ def _load_model_tokenizer(config: TrainConfig):
     model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
         config.model_name,
         quantization_config=bnb_config,
-        torch_dtype=torch.float16,
+        torch_dtype=compute_dtype,
         device_map=None if multi_gpu else "auto",
         trust_remote_code=True,
     )
@@ -102,13 +103,14 @@ def _load_model_tokenizer(config: TrainConfig):
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_config)
-    # Cast any bf16 params/buffers to fp16 (P100/GTX lack bf16 support)
-    for param in model.parameters():
-        if param.dtype == torch.bfloat16:
-            param.data = param.data.to(torch.float16)
-    for buf in model.buffers():
-        if buf.dtype == torch.bfloat16:
-            buf.data = buf.data.to(torch.float16)
+    if not config.bf16:
+        # Cast any bf16 params/buffers to fp16 (P100/GTX lack bf16 support)
+        for param in model.parameters():
+            if param.dtype == torch.bfloat16:
+                param.data = param.data.to(torch.float16)
+        for buf in model.buffers():
+            if buf.dtype == torch.bfloat16:
+                buf.data = buf.data.to(torch.float16)
     model.print_trainable_parameters()
     return model, tokenizer
 
@@ -157,11 +159,21 @@ def run_training(config: TrainConfig) -> str:
                 samples[task_name] = rng_select.sample(samples[task_name], config.select_sample)
                 logger.info("Subsampled %s to %d", task_name, config.select_sample)
     logger.info("Building HF dataset (%d tasks)", len(samples))
-    train_ds = _build_hf_dataset(samples, tokenizer, config)
-    logger.info("Training dataset: %d examples", len(train_ds))
+    full_ds = _build_hf_dataset(samples, tokenizer, config)
+    # Split into train/val
+    eval_ds = None
+    if config.val_fraction > 0:
+        split = full_ds.train_test_split(test_size=config.val_fraction, seed=config.seed)
+        train_ds = split["train"]
+        eval_ds = split["test"]
+        logger.info("Train: %d examples, Val: %d examples", len(train_ds), len(eval_ds))
+    else:
+        train_ds = full_ds
+        logger.info("Training dataset: %d examples (no validation split)", len(train_ds))
     # Configure SFT
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    use_eval = eval_ds is not None
     training_args = trl.SFTConfig(
         output_dir=str(output_dir),
         per_device_train_batch_size=config.batch_size,
@@ -177,7 +189,8 @@ def run_training(config: TrainConfig) -> str:
         gradient_checkpointing=config.gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False} if config.gradient_checkpointing else None,
         logging_steps=config.logging_steps,
-        eval_strategy="no",
+        eval_strategy="steps" if use_eval else "no",
+        eval_steps=config.eval_steps if use_eval else None,
         save_strategy="steps",
         save_steps=config.save_steps,
         seed=config.seed,
@@ -191,6 +204,7 @@ def run_training(config: TrainConfig) -> str:
         model=model,
         processing_class=tokenizer,
         train_dataset=train_ds,
+        eval_dataset=eval_ds,
         args=training_args,
     )
     logger.info("Starting training...")

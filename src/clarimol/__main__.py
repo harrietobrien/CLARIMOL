@@ -36,11 +36,18 @@ def cmd_prepare(args: argparse.Namespace) -> None:
         logger.info("Loading ZINC250K (split=%s)", args.split)
         smiles = load_zinc250k(args.split)
     logger.info("Loaded %d molecules", len(smiles))
+    # Resolve curriculum ordering: explicit --curriculum-order takes precedence
+    if args.curriculum_order is not None:
+        curriculum_order = args.curriculum_order
+    elif args.no_curriculum:
+        curriculum_order = "none"
+    else:
+        curriculum_order = "easy-hard"
     pruning = PruningConfig(
         keep_n=args.keep_n,
         subsample=args.subsample,
         trim_fraction=args.trim_fraction,
-        sort_curriculum=not args.no_curriculum,
+        curriculum_order=curriculum_order,
     )
     task_names = args.tasks.split(",") if args.tasks else None
     data = build_dataset(
@@ -61,6 +68,9 @@ def cmd_train(args: argparse.Namespace) -> None:
     setup_logging(args.log_level)
     from clarimol.train.config import TrainConfig
     from clarimol.train.trainer import run_training
+    # bf16 overrides fp16 when both are requested
+    use_bf16 = args.bf16
+    use_fp16 = (not args.no_fp16) and (not use_bf16)
     config = TrainConfig(
         model_name=args.model,
         model_max_length=args.max_length,
@@ -72,7 +82,9 @@ def cmd_train(args: argparse.Namespace) -> None:
         epochs=args.epochs,
         lora_r=args.lora_r,
         lora_alpha=args.lora_alpha,
-        fp16=not args.no_fp16,
+        bf16=use_bf16,
+        fp16=use_fp16,
+        load_in_4bit=not args.no_4bit,
         use_wandb=not args.no_wandb,
         seed=args.seed,
         gradient_checkpointing=not args.no_grad_ckpt,
@@ -90,6 +102,8 @@ def cmd_downstream_train(args: argparse.Namespace) -> None:
     from clarimol.utils.io import setup_logging
     setup_logging(args.log_level)
     from clarimol.train.downstream import DownstreamConfig, run_downstream_training
+    use_bf16 = args.bf16
+    use_fp16 = (not args.no_fp16) and (not use_bf16)
     config = DownstreamConfig(
         model_name=args.model,
         data_dir=args.data_dir,
@@ -104,7 +118,9 @@ def cmd_downstream_train(args: argparse.Namespace) -> None:
         use_wandb=not args.no_wandb,
         seed=args.seed,
         gradient_checkpointing=not args.no_grad_ckpt,
-        fp16=not args.no_fp16,
+        bf16=use_bf16,
+        fp16=use_fp16,
+        load_in_4bit=not args.no_4bit,
         max_samples=args.max_samples,
         use_unsloth=not args.no_unsloth,
     )
@@ -128,10 +144,10 @@ def cmd_downstream_eval(args: argparse.Namespace) -> None:
         max_samples=args.max_samples,
         batch_size=args.batch_size,
     )
-    print("\nDownstream Evaluation Results . . .")
+    print("\nDownstream Evaluation Results")
     for task_name, r in results.items():
         print(f"  {task_name}:")
-        print(f"    exact={r.exact_match:.3f}  bleu={r.bleu:.3f}  lev={r.levenshtein:.2f}")
+        print(f"    exact={r.exact_match:.3f}  bleu={r.bleu:.3f}  lev={r.levenshtein:.2f}  lev_norm={r.levenshtein_norm:.3f}")
         print(f"    maccs={r.maccs_fps:.3f}  rdk={r.rdk_fps:.3f}  morgan={r.morgan_fps:.3f}")
         print(f"    validity={r.validity:.3f}")
     if args.output_file:
@@ -141,6 +157,7 @@ def cmd_downstream_eval(args: argparse.Namespace) -> None:
                 "exact_match": r.exact_match,
                 "bleu": r.bleu,
                 "levenshtein": r.levenshtein,
+                "levenshtein_norm": r.levenshtein_norm,
                 "maccs_fps": r.maccs_fps,
                 "rdk_fps": r.rdk_fps,
                 "morgan_fps": r.morgan_fps,
@@ -149,6 +166,64 @@ def cmd_downstream_eval(args: argparse.Namespace) -> None:
         with open(args.output_file, "w") as f:
             json.dump(out, f, indent=2)
         logger.info("Results saved to %s", args.output_file)
+
+
+def cmd_check_contamination(args: argparse.Namespace) -> None:
+    """Check for data contamination between train and test splits."""
+    from clarimol.utils.io import setup_logging
+    setup_logging(args.log_level)
+    import json
+    import logging
+    from rdkit import Chem
+    logger = logging.getLogger(__name__)
+
+    def _load_smiles_from_json_dir(data_dir: str) -> set[str]:
+        """Load and canonicalize all SMILES from a dataset directory."""
+        from pathlib import Path
+        canonical: set[str] = set()
+        d = Path(data_dir)
+        for path in d.glob("*.json"):
+            with open(path) as f:
+                records = json.load(f)
+            for r in records:
+                smi = r.get("smiles", "")
+                mol = Chem.MolFromSmiles(smi)
+                if mol is not None:
+                    canonical.add(Chem.MolToSmiles(mol, canonical=True))
+        return canonical
+
+    logger.info("Loading training SMILES from %s", args.train_dir)
+    train_smiles = _load_smiles_from_json_dir(args.train_dir)
+    logger.info("Loading test SMILES from %s", args.test_dir)
+    test_smiles = _load_smiles_from_json_dir(args.test_dir)
+
+    overlap = train_smiles & test_smiles
+    print(f"\nData Contamination Check")
+    print(f"  Train molecules (unique canonical): {len(train_smiles)}")
+    print(f"  Test molecules  (unique canonical): {len(test_smiles)}")
+    print(f"  Overlap: {len(overlap)}")
+    if test_smiles:
+        rate = len(overlap) / len(test_smiles)
+        print(f"  Contamination rate: {rate:.4f} ({rate*100:.2f}%)")
+    if overlap:
+        print(f"\n  First 10 overlapping SMILES:")
+        for smi in sorted(overlap)[:10]:
+            print(f"    {smi}")
+
+    if args.output_file:
+        result = {
+            "train_unique": len(train_smiles),
+            "test_unique": len(test_smiles),
+            "overlap_count": len(overlap),
+            "contamination_rate": len(overlap) / len(test_smiles) if test_smiles else 0.0,
+            "overlap_smiles": sorted(overlap),
+        }
+        with open(args.output_file, "w") as f:
+            json.dump(result, f, indent=2)
+        logger.info("Results saved to %s", args.output_file)
+
+    if overlap:
+        logger.warning("DATA CONTAMINATION DETECTED: %d molecules appear in both train and test", len(overlap))
 
 
 def cmd_evaluate(args: argparse.Namespace) -> None:
@@ -167,11 +242,17 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
     )
     # Print summary
-    print("\nEvaluation Results . . .")
+    print("\nEvaluation Results")
     for task_name, r in results.items():
         print(f"  {task_name:20s}  acc={r.accuracy:.4f}  ({r.correct}/{r.total})")
         if r.validity > 0:
             print(f"  {'':20s}  validity={r.validity:.4f}")
+        if r.extraction_failures > 0:
+            print(f"  {'':20s}  extraction_failures={r.extraction_failures}")
+        if r.breakdown and len(r.breakdown) > 1:
+            print(f"  {'':20s}  breakdown:")
+            for cat, stats in sorted(r.breakdown.items(), key=lambda x: -x[1]["accuracy"]):
+                print(f"  {'':22s}{cat:25s}  {stats['accuracy']:.4f}  ({stats['correct']}/{stats['total']})")
     # Optionally save to JSON
     if args.output_file:
         out = {
@@ -180,6 +261,8 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
                 "correct": r.correct,
                 "total": r.total,
                 "validity": r.validity,
+                "extraction_failures": r.extraction_failures,
+                "breakdown": r.breakdown,
             }
             for name, r in results.items()
         }
@@ -209,7 +292,10 @@ def main() -> None:
     p_prep.add_argument("--keep-n", type=int, default=50_000, help="Samples to keep per task")
     p_prep.add_argument("--subsample", default="middle", choices=["middle", "top", "bottom", "random"])
     p_prep.add_argument("--trim-fraction", type=float, default=0.15, help="Tail trim fraction")
-    p_prep.add_argument("--no-curriculum", action="store_true", help="Disable curriculum ordering")
+    p_prep.add_argument("--no-curriculum", action="store_true", help="Disable curriculum ordering (legacy; prefer --curriculum-order)")
+    p_prep.add_argument("--curriculum-order", default=None,
+                        choices=["easy-hard", "hard-easy", "random", "none"],
+                        help="Curriculum ordering strategy (default: easy-hard)")
     p_prep.add_argument("--seed", type=int, default=42)
     p_prep.add_argument("--max-molecules", type=int, default=None, help="Limit molecules (for dev)")
     # Train
@@ -223,10 +309,12 @@ def main() -> None:
     p_train.add_argument("--epochs", type=int, default=1)
     p_train.add_argument("--lora-r", type=int, default=64)
     p_train.add_argument("--lora-alpha", type=int, default=16)
+    p_train.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization (full precision)")
     p_train.add_argument("--no-wandb", action="store_true")
     p_train.add_argument("--no-grad-ckpt", action="store_true")
     p_train.add_argument("--max-length", type=int, default=2048, help="Max sequence length")
     p_train.add_argument("--no-fp16", action="store_true", help="Disable fp16 AMP (use fp32)")
+    p_train.add_argument("--bf16", action="store_true", help="Use bf16 (requires Ampere+; overrides fp16)")
     p_train.add_argument("--no-unsloth", action="store_true")
     p_train.add_argument("--packing", action="store_true", help="Pack sequences to reduce padding waste")
     p_train.add_argument("--select-sample", type=int, default=None, help="Max samples per task (default: all)")
@@ -255,9 +343,11 @@ def main() -> None:
     p_ds_train.add_argument("--lora-r", type=int, default=64)
     p_ds_train.add_argument("--lora-alpha", type=int, default=16)
     p_ds_train.add_argument("--max-samples", type=int, default=None, help="Cap training samples")
+    p_ds_train.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization (full precision)")
     p_ds_train.add_argument("--no-wandb", action="store_true")
     p_ds_train.add_argument("--no-grad-ckpt", action="store_true")
     p_ds_train.add_argument("--no-fp16", action="store_true", help="Disable fp16 AMP (use fp32)")
+    p_ds_train.add_argument("--bf16", action="store_true", help="Use bf16 (requires Ampere+; overrides fp16)")
     p_ds_train.add_argument("--no-unsloth", action="store_true")
     p_ds_train.add_argument("--seed", type=int, default=42)
     # Downstream evaluate
@@ -269,6 +359,11 @@ def main() -> None:
     p_ds_eval.add_argument("--batch-size", type=int, default=4)
     p_ds_eval.add_argument("--max-samples", type=int, default=None)
     p_ds_eval.add_argument("--no-unsloth", action="store_true")
+    # Check contamination
+    p_contam = sub.add_parser("check-contamination", help="Check for train/test data contamination")
+    p_contam.add_argument("--train-dir", default="data/clarimol", help="Training data directory")
+    p_contam.add_argument("--test-dir", default="data/test", help="Test data directory")
+    p_contam.add_argument("--output-file", default=None, help="JSON output for contamination report")
 
     args = parser.parse_args()
     if args.command == "prepare":
@@ -281,6 +376,8 @@ def main() -> None:
         cmd_downstream_train(args)
     elif args.command == "downstream-eval":
         cmd_downstream_eval(args)
+    elif args.command == "check-contamination":
+        cmd_check_contamination(args)
 
 
 if __name__ == "__main__":

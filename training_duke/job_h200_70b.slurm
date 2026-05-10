@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=200G
 #SBATCH --gres=gpu:h200:1
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/h200_70b_%j.log
 #SBATCH --error=output/h200_70b_%j.err
 #SBATCH --requeue

@@ -8,6 +8,10 @@ from clarimol.data.sample import Sample
 import random
 
 
+# Valid curriculum ordering strategies
+CURRICULUM_ORDERS = ("easy-hard", "hard-easy", "random", "none")
+
+
 @dataclass
 class PruningConfig:
     """Controls degree of pruning and reorder"""
@@ -16,13 +20,25 @@ class PruningConfig:
     subsample: str = "middle"
     # fraction trimmed from each tail before middle selection
     trim_fraction: float = 0.15
-    # if True, final order is easy → hard
-    sort_curriculum: bool = True
+    # Curriculum ordering: "easy-hard", "hard-easy", "random", "none"
+    curriculum_order: str = "easy-hard"
+    # Legacy compat: if set, overrides curriculum_order
+    sort_curriculum: bool | None = None
+
+    def __post_init__(self):
+        if self.sort_curriculum is not None:
+            self.curriculum_order = "easy-hard" if self.sort_curriculum else "none"
+        if self.curriculum_order not in CURRICULUM_ORDERS:
+            raise ValueError(
+                f"Unknown curriculum_order '{self.curriculum_order}'. "
+                f"Available: {CURRICULUM_ORDERS}"
+            )
 
 
 def prune_and_sort(
     samples: list[Sample],
     config: PruningConfig | None = None,
+    seed: int = 42,
 ) -> list[Sample]:
     """
     Prune a list of Samples by difficulty;
@@ -34,12 +50,13 @@ def prune_and_sort(
         config = PruningConfig()
     if not samples:
         return list()
+    rng = random.Random(seed)
     # Sort by difficulty ascending (easy first)
     ranked = sorted(samples, key=lambda s: s.difficulty)
     n = len(ranked)
     if config.subsample == "random":
         ranked_copy = list(ranked)
-        random.shuffle(ranked_copy)
+        rng.shuffle(ranked_copy)
         selected = ranked_copy[: config.keep_n]
     elif config.subsample == "top":
         # Hardest - 'top'
@@ -56,7 +73,12 @@ def prune_and_sort(
             selected = body[start : start + config.keep_n]
         else:
             selected = list(body)
-    # Curriculum ordering: easy → hard
-    if config.sort_curriculum:
+    # Apply curriculum ordering
+    if config.curriculum_order == "easy-hard":
         selected.sort(key=lambda s: s.difficulty)
+    elif config.curriculum_order == "hard-easy":
+        selected.sort(key=lambda s: s.difficulty, reverse=True)
+    elif config.curriculum_order == "random":
+        rng.shuffle(selected)
+    # "none" → preserve selection order (which is already difficulty-sorted from subsample)
     return selected

@@ -102,12 +102,13 @@ def _load_model_tokenizer(config: DownstreamConfig):
         except ImportError:
             logger.warning("Unsloth not available, falling back to standard HF + PEFT")
 
+    compute_dtype = torch.bfloat16 if config.bf16 else torch.float16
     bnb_config = None
     if config.load_in_4bit:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_use_double_quant=True,
         )
 

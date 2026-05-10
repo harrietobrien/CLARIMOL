@@ -32,7 +32,9 @@ class ParsingResult:
     total: int
     correct: int
     validity: float = 0.0  # for SMILES-output tasks
+    extraction_failures: int = 0  # predictions where answer couldn't be extracted
     details: dict = field(default_factory=dict)
+    breakdown: dict = field(default_factory=dict)  # per-category accuracy
 
 
 @dataclass
@@ -40,7 +42,8 @@ class GenerationResult:
     """Results for molecular generation evaluation"""
     exact_match: float = 0.0
     bleu: float = 0.0
-    levenshtein: float = 0.0
+    levenshtein: float = 0.0      # raw mean edit distance
+    levenshtein_norm: float = 0.0  # normalized (0-1, lower=better)
     maccs_fps: float = 0.0
     rdk_fps: float = 0.0
     morgan_fps: float = 0.0
@@ -102,19 +105,32 @@ def evaluate_parsing(
     predictions: list[str],
     references: list[str],
     task: str,
+    metadata: list[dict] | None = None,
 ) -> ParsingResult:
     """
     Evaluate parsing task predictions against ground truth.
 
-    :param: predictions: Raw model outputs
-    :param: Ground truth answers
-    :param: Task name (determines extraction strategy)
+    :param predictions: Raw model outputs
+    :param references: Ground truth answers
+    :param task: Task name (determines extraction strategy)
+    :param metadata: Per-sample metadata dicts for per-category breakdowns
     """
     correct = 0
     valid_smiles = 0
+    extraction_failures = 0
     total = len(predictions)
     is_smiles_task = task in ("canonicalization", "fragment_assembly")
-    for pred_raw, ref in zip(predictions, references):
+
+    # Per-category tracking
+    category_correct: dict[str, int] = {}
+    category_total: dict[str, int] = {}
+
+    for i, (pred_raw, ref) in enumerate(zip(predictions, references)):
+        # Determine category for breakdown
+        cat = _get_category(task, ref, metadata[i] if metadata else None)
+
+        category_total[cat] = category_total.get(cat, 0) + 1
+
         # Extract answer based on task type
         if task == "functional_group":
             pred = _extract_yes_no(pred_raw)
@@ -123,8 +139,10 @@ def evaluate_parsing(
         else:
             pred = _extract_smiles(pred_raw)
         if pred is None:
+            extraction_failures += 1
             continue
         # Check correctness
+        is_correct = False
         if is_smiles_task:
             # Canonicalize both for fair comparison
             pred_mol = Chem.MolFromSmiles(pred)
@@ -133,20 +151,72 @@ def evaluate_parsing(
                 valid_smiles += 1
                 pred_can = Chem.MolToSmiles(pred_mol, canonical=True)
                 ref_can = Chem.MolToSmiles(ref_mol, canonical=True) if ref_mol else ref
-                if pred_can == ref_can:
-                    correct += 1
+                is_correct = pred_can == ref_can
         else:
-            if pred.strip().lower() == ref.strip().lower():
-                correct += 1
+            is_correct = pred.strip().lower() == ref.strip().lower()
+
+        if is_correct:
+            correct += 1
+            category_correct[cat] = category_correct.get(cat, 0) + 1
+
     accuracy = correct / total if total > 0 else 0.0
     validity = valid_smiles / total if total > 0 and is_smiles_task else 0.0
+
+    # Build per-category breakdown
+    breakdown = {}
+    for cat in sorted(category_total):
+        ct = category_total[cat]
+        cc = category_correct.get(cat, 0)
+        breakdown[cat] = {
+            "accuracy": cc / ct if ct > 0 else 0.0,
+            "correct": cc,
+            "total": ct,
+        }
+
     return ParsingResult(
         task=task,
         accuracy=accuracy,
         total=total,
         correct=correct,
         validity=validity,
+        extraction_failures=extraction_failures,
+        breakdown=breakdown,
     )
+
+
+def _get_category(task: str, reference: str, meta: dict | None) -> str:
+    """Determine the breakdown category for a sample."""
+    if task == "functional_group" and meta:
+        # Group by functional group name
+        return meta.get("fg_name", "unknown")
+    elif task == "ring_counting":
+        # Group by answer (ring count)
+        return f"count={reference}"
+    elif task == "chain_length":
+        # Group by chain length bucket
+        try:
+            length = int(reference)
+            if length <= 3:
+                return "short (1-3)"
+            elif length <= 7:
+                return "medium (4-7)"
+            else:
+                return "long (8+)"
+        except ValueError:
+            return "unknown"
+    elif task in ("canonicalization", "fragment_assembly") and meta:
+        # Group by SMILES length quartile
+        smi = meta.get("smiles", "") or ""
+        slen = len(smi)
+        if slen <= 20:
+            return "short (<=20)"
+        elif slen <= 40:
+            return "medium (21-40)"
+        elif slen <= 60:
+            return "long (41-60)"
+        else:
+            return "very long (60+)"
+    return "all"
 
 
 
@@ -209,6 +279,7 @@ def evaluate_generation(
     exact = 0
     bleu_scores: list[float] = list()
     lev_distances: list[int] = list()
+    lev_normalized: list[float] = list()
     maccs_sims: list[float] = list()
     rdk_sims: list[float] = list()
     morgan_sims: list[float] = list()
@@ -227,7 +298,10 @@ def evaluate_generation(
             pred_can = pred
             ref_can = ref
         bleu_scores.append(_compute_bleu(pred_can, ref_can))
-        lev_distances.append(_compute_levenshtein(pred_can, ref_can))
+        raw_lev = _compute_levenshtein(pred_can, ref_can)
+        lev_distances.append(raw_lev)
+        max_len = max(len(pred_can), len(ref_can))
+        lev_normalized.append(raw_lev / max_len if max_len > 0 else 0.0)
         # Fingerprint similarities (only if both are valid)
         if pred_mol and ref_mol:
             maccs_sims.append(_tanimoto_similarity(pred_mol, ref_mol, "maccs"))
@@ -239,6 +313,7 @@ def evaluate_generation(
         exact_match=exact / n,
         bleu=float(np.mean(bleu_scores)) if bleu_scores else 0.0,
         levenshtein=float(np.mean(lev_distances)) if lev_distances else 0.0,
+        levenshtein_norm=float(np.mean(lev_normalized)) if lev_normalized else 0.0,
         maccs_fps=float(np.mean(maccs_sims)) if maccs_sims else 0.0,
         rdk_fps=float(np.mean(rdk_sims)) if rdk_sims else 0.0,
         morgan_fps=float(np.mean(morgan_sims)) if morgan_sims else 0.0,

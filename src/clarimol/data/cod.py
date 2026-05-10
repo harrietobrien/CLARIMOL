@@ -93,7 +93,9 @@ def query_cod_entries(
     if required_elements is None:
         required_elements = ["C", "H"]
     if excluded_elements is None:
-        excluded_elements = EXCLUDE_METALS[:4]
+        # COD API only supports 4 nel params; pick the most common metals.
+        # Full metal filtering happens post-hoc in _is_organic_smiles().
+        excluded_elements = ["Fe", "Cu", "Zn", "Ni"]
     params: dict[str, str] = {
         "format": "json",
         "strictmax": str(max_elements),

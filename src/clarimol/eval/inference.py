@@ -72,7 +72,7 @@ def generate_predictions(
     tokenizer,
     samples: list[Sample],
     max_new_tokens: int = 128,
-    temperature: float = 0.2,
+    temperature: float = 0.0,
     batch_size: int = 8,
 ) -> list[str]:
     """Run batch inference over samples + return raw model outputs"""
@@ -154,7 +154,8 @@ def evaluate_model(
             batch_size=batch_size,
         )
         references = [s.answer for s in samples]
-        result = evaluate_parsing(predictions, references, task_name)
+        sample_metadata = [s.metadata for s in samples]
+        result = evaluate_parsing(predictions, references, task_name, metadata=sample_metadata)
         results[task_name] = result
         logger.info(
             "  %s: accuracy=%.4f (%d/%d)",

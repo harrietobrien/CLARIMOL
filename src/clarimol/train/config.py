@@ -30,8 +30,8 @@ class TrainConfig:
     epochs: int = 1
     lr_scheduler: str = "cosine"
     max_grad_norm: float = 1.0
-    bf16: bool = False  # Ada on work laptop does support bf16 but 8gb VRAM :(
-    fp16: bool = True   # Tesla P100 cannot support bf16 but has 16gb VRAM :)
+    bf16: bool = False   # H200/A100/Ampere+ support bf16; P100 does not
+    fp16: bool = True    # P100 fallback; ignored if bf16=True
     # Generation (for eval during training)
     temperature: float = 0.2
     repetition_penalty: float = 1.0
@@ -47,7 +47,7 @@ class TrainConfig:
     )
     data_dir: str = "data/clarimol"
     select_sample: int | None = None
-    test_val_sample: int = 10_000
+    val_fraction: float = 0.05  # fraction of training data held out for validation
     seed: int = 42
     # Output
     output_dir: str = "output/clarimol"
