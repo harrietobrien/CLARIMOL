@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Iterator
 from rdkit import Chem
 from datasets import load_dataset
+from rdkit import RDLogger
 from clarimol.data.pruning import PruningConfig, prune_and_sort
 from clarimol.data.parsing import Parsing
 from clarimol.data.sample import Sample
 from clarimol.data.tasks import get_task
+
+RDLogger.logger().setLevel(RDLogger.ERROR)
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +53,63 @@ def _generate_for_molecule(
             logger.debug("Task %s failed on %s: %s", task.name, smiles, e)
 
 
+def _canonicalize_smiles(smiles: str) -> str | None:
+    """Canonicalize a SMILES string, returning None if invalid."""
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    return Chem.MolToSmiles(mol, canonical=True)
+
+
+def decontaminate_smiles(
+    train_smiles: list[str],
+    test_smiles: list[str],
+) -> list[str]:
+    """
+    Remove molecules from training set that appear in the test set.
+    Comparison is done on canonical SMILES to catch equivalent representations.
+
+    :return: Filtered training SMILES list (test set molecules removed)
+    """
+    # Build set of canonical test SMILES
+    test_canonical: set[str] = set()
+    for smi in test_smiles:
+        can = _canonicalize_smiles(smi)
+        if can is not None:
+            test_canonical.add(can)
+    # Filter training set
+    clean: list[str] = []
+    removed = 0
+    for smi in train_smiles:
+        can = _canonicalize_smiles(smi)
+        if can is not None and can in test_canonical:
+            removed += 1
+        else:
+            clean.append(smi)
+    logger.info(
+        "Decontamination: removed %d/%d training molecules that overlap with test set (%d unique test molecules)",
+        removed, len(train_smiles), len(test_canonical),
+    )
+    return clean
+
+
 def build_dataset(
     smiles_list: list[str],
     task_names: list[str] | None = None,
     pruning: PruningConfig | None = None,
     seed: int = 42,
     max_molecules: int | None = None,
+    exclude_smiles: set[str] | None = None,
 ) -> dict[str, list[Sample]]:
     """
     Build the CLARIMOL dataset from a list of SMILES.
 
-    :param: smiles_list: Raw SMILES strings (e.g. from ZINC250K)
-    :param: task_names: Which parsing tasks to generate. None → all five
-    :param: pruning: Pruning/curriculum config. None → defaults (50K middle, curriculum)
-    :param: seed: Random seed for reproducibility
-    :param: max_molecules: Cap on molecules to process (for testing)
+    :param smiles_list: Raw SMILES strings (e.g. from ZINC250K)
+    :param task_names: Which parsing tasks to generate. None → all five
+    :param pruning: Pruning/curriculum config. None → defaults (50K middle, curriculum)
+    :param seed: Random seed for reproducibility
+    :param max_molecules: Cap on molecules to process (for testing)
+    :param exclude_smiles: Set of canonical SMILES to exclude (for decontamination)
 
     :return: Dictionary of task name -> list of pruned samples
     """
@@ -80,6 +125,15 @@ def build_dataset(
     rng = random.Random(seed)
     if max_molecules is not None:
         smiles_list = smiles_list[:max_molecules]
+    # Decontaminate if exclusion set provided
+    if exclude_smiles:
+        before = len(smiles_list)
+        smiles_list = [
+            smi for smi in smiles_list
+            if _canonicalize_smiles(smi) not in exclude_smiles
+        ]
+        logger.info("Decontamination: %d → %d molecules (%d excluded)",
+                     before, len(smiles_list), before - len(smiles_list))
     # Collect raw samples per task
     raw: dict[str, list[Sample]] = {t.name: [] for t in tasks}
     n_total = len(smiles_list)
