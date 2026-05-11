@@ -38,6 +38,8 @@ def _load_model_for_inference(model_path: str, use_unsloth: bool = True):
         base_model_name = adapter_config["base_model_name_or_path"]
         logger.info("Loading base model %s with LoRA adapter from %s", base_model_name, model_path)
         tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left", trust_remote_code=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -56,6 +58,8 @@ def _load_model_for_inference(model_path: str, use_unsloth: bool = True):
 
     # Plain model (no adapter) — e.g. base model evaluation
     tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left", trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map="auto",
