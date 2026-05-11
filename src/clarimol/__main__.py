@@ -49,6 +49,19 @@ def cmd_prepare(args: argparse.Namespace) -> None:
         trim_fraction=args.trim_fraction,
         curriculum_order=curriculum_order,
     )
+    # Decontamination: load test SMILES and build exclusion set
+    exclude_smiles = None
+    if args.decontaminate:
+        from clarimol.data.dataset import load_dataset_from_disk, _canonicalize_smiles
+        logger.info("Loading test data from %s for decontamination", args.decontaminate)
+        test_data = load_dataset_from_disk(args.decontaminate)
+        exclude_smiles = set()
+        for task_samples in test_data.values():
+            for s in task_samples:
+                can = _canonicalize_smiles(s.smiles)
+                if can is not None:
+                    exclude_smiles.add(can)
+        logger.info("Decontamination: %d unique test molecules to exclude", len(exclude_smiles))
     task_names = args.tasks.split(",") if args.tasks else None
     data = build_dataset(
         smiles_list=smiles,
@@ -56,6 +69,7 @@ def cmd_prepare(args: argparse.Namespace) -> None:
         pruning=pruning,
         seed=args.seed,
         max_molecules=args.max_molecules,
+        exclude_smiles=exclude_smiles,
     )
     save_dataset(data, args.output_dir)
     total = sum(len(v) for v in data.values())
@@ -298,6 +312,8 @@ def main() -> None:
                         help="Curriculum ordering strategy (default: easy-hard)")
     p_prep.add_argument("--seed", type=int, default=42)
     p_prep.add_argument("--max-molecules", type=int, default=None, help="Limit molecules (for dev)")
+    p_prep.add_argument("--decontaminate", type=str, default=None,
+                        help="Path to test data dir; removes overlapping molecules from training set")
     # Train
     p_train = sub.add_parser("train", help="Train on CLARIMOL dataset")
     p_train.add_argument("--model", default="unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit")
