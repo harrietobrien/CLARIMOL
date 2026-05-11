@@ -191,12 +191,21 @@ def cmd_check_contamination(args: argparse.Namespace) -> None:
     from rdkit import Chem
     logger = logging.getLogger(__name__)
 
-    def _load_smiles_from_json_dir(data_dir: str) -> set[str]:
-        """Load and canonicalize all SMILES from a dataset directory."""
+    # Tasks where the 'smiles' field is the original source molecule.
+    # canonicalization uses randomized SMILES; fragment_assembly uses "frag1 . frag2".
+    # Those would cause false-positive overlaps (shared fragments / random forms).
+    SOURCE_TASKS = {"functional_group", "ring_counting", "chain_length"}
+
+    def _load_source_smiles(data_dir: str) -> set[str]:
+        """Load and canonicalize source molecule SMILES from a dataset directory.
+        Only uses tasks where the smiles field is the unmodified source molecule."""
         from pathlib import Path
         canonical: set[str] = set()
         d = Path(data_dir)
         for path in d.glob("*.json"):
+            task_name = path.stem
+            if task_name not in SOURCE_TASKS:
+                continue
             with open(path) as f:
                 records = json.load(f)
             for r in records:
@@ -206,13 +215,13 @@ def cmd_check_contamination(args: argparse.Namespace) -> None:
                     canonical.add(Chem.MolToSmiles(mol, canonical=True))
         return canonical
 
-    logger.info("Loading training SMILES from %s", args.train_dir)
-    train_smiles = _load_smiles_from_json_dir(args.train_dir)
-    logger.info("Loading test SMILES from %s", args.test_dir)
-    test_smiles = _load_smiles_from_json_dir(args.test_dir)
+    logger.info("Loading training source molecules from %s (tasks: %s)", args.train_dir, SOURCE_TASKS)
+    train_smiles = _load_source_smiles(args.train_dir)
+    logger.info("Loading test source molecules from %s (tasks: %s)", args.test_dir, SOURCE_TASKS)
+    test_smiles = _load_source_smiles(args.test_dir)
 
     overlap = train_smiles & test_smiles
-    print(f"\nData Contamination Check")
+    print(f"\nData Contamination Check (source molecules only, tasks: {sorted(SOURCE_TASKS)})")
     print(f"  Train molecules (unique canonical): {len(train_smiles)}")
     print(f"  Test molecules  (unique canonical): {len(test_smiles)}")
     print(f"  Overlap: {len(overlap)}")
