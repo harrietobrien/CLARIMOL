@@ -20,9 +20,15 @@ def cmd_prepare(args: argparse.Namespace) -> None:
     import logging
     logger = logging.getLogger(__name__)
     # Load source molecules
-    if args.source == "cod":
+    if args.source == "cod-bulk":
+        from clarimol.data.cod_bulk import fetch_cod_bulk
+        logger.info("Fetching bulk COD SMILES (target=%s)", args.max_molecules or 50000)
+        smiles = fetch_cod_bulk(
+            max_molecules=args.max_molecules or 50000,
+            cache_dir=args.cod_cache_dir,
+        )
+    elif args.source == "cod":
         from clarimol.data.cod import fetch_cod_smiles
-
         logger.info("Fetching SMILES from COD (max_entries=%s)", args.max_molecules or 1000)
         smiles = fetch_cod_smiles(
             max_entries=args.max_molecules or 1000,
@@ -305,8 +311,8 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     # Prepare
     p_prep = sub.add_parser("prepare", help="Build CLARIMOL dataset")
-    p_prep.add_argument("--source", default="zinc", choices=["zinc", "cod", "file"],
-                        help="Molecule source: zinc (ZINC250K), cod (COD API), file (custom)")
+    p_prep.add_argument("--source", default="zinc", choices=["zinc", "cod", "cod-bulk", "file"],
+                        help="Molecule source: zinc (ZINC250K), cod (COD API), cod-bulk (bulk COD SMILES), file (custom)")
     p_prep.add_argument("--smiles-file", type=str, default=None, help="Path to SMILES file (--source file)")
     p_prep.add_argument("--split", default="train", help="ZINC250K split (default: train)")
     p_prep.add_argument("--cod-cache-dir", default="data/cod_cache", help="Cache dir for COD CIF files")

@@ -13,9 +13,9 @@
 #SBATCH --requeue
 #SBATCH --exclude=dcc-h200-gpu-05
 #
-# Multi-seed ChemLLM 7B Chat 1.5 (seeds 42, 137, 2024)
-# Chemistry-specific LLM — key comparison: does parsing pre-training
-# still help a model that was already trained on chemical data?
+# Multi-seed Galactica 6.7B (seeds 42, 137, 2024)
+# Scientific LLM pre-trained on 106B tokens of scientific text including SMILES.
+# Key comparison: does parsing pre-training help a science-specific model?
 #
 # Submit: sbatch training_duke/job_multi_seed_chemllm.slurm
 
@@ -30,11 +30,11 @@ module load Anaconda3 2>/dev/null || module load conda 2>/dev/null || true
 eval "$(conda shell.bash hook)"
 conda activate /work/gc237/conda_envs/clarimol
 
-MODEL="AI4Chem/ChemLLM-7B-Chat-1_5-SFT"
-BASE_OUT="output/multi_seed/chemllm-7b"
+MODEL="facebook/galactica-6.7b"
+BASE_OUT="output/multi_seed/galactica-6.7b"
 SEEDS=(42 137 2024)
 
-echo "=== Multi-seed ChemLLM 7B Chat 1.5 ==="
+echo "=== Multi-seed Galactica 6.7B ==="
 nvidia-smi
 echo "Start: $(date)"
 
