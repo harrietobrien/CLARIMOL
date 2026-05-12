@@ -312,7 +312,7 @@ def main() -> None:
     # Prepare
     p_prep = sub.add_parser("prepare", help="Build CLARIMOL dataset")
     p_prep.add_argument("--source", default="zinc", choices=["zinc", "cod", "cod-bulk", "file"],
-                        help="Molecule source: zinc (ZINC250K), cod (COD API), cod-bulk (bulk COD SMILES), file (custom)")
+                        help="Molecule source: zinc (ZINC250K), cod (COD API), cod-bulk (bulk COD), file (custom)")
     p_prep.add_argument("--smiles-file", type=str, default=None, help="Path to SMILES file (--source file)")
     p_prep.add_argument("--split", default="train", help="ZINC250K split (default: train)")
     p_prep.add_argument("--cod-cache-dir", default="data/cod_cache", help="Cache dir for COD CIF files")

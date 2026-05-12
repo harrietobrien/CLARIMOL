@@ -53,14 +53,22 @@ class GenerationResult:
 # Answer Extraction Helpers
 _YES_NO_RE = re.compile(r"\b(yes|no)\b", re.IGNORECASE)
 _INTEGER_RE = re.compile(r"\b(\d+)\b")
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def _strip_thinking(text: str) -> str:
+    """Remove <think>...</think> blocks from model output."""
+    return _THINK_RE.sub("", text).strip()
 
 
 def _extract_yes_no(text: str) -> str | None:
+    text = _strip_thinking(text)
     m = _YES_NO_RE.search(text)
     return m.group(1).capitalize() if m else None
 
 
 def _extract_integer(text: str) -> str | None:
+    text = _strip_thinking(text)
     m = _INTEGER_RE.search(text)
     return m.group(1) if m else None
 
@@ -85,16 +93,18 @@ def _selfies_to_smiles(text: str) -> str:
 
 def _extract_smiles(text: str) -> str:
     """Extraction attempt of a SMILES string from model output"""
-    text = text.strip()
+    # Strip thinking tags (e.g., Qwen3 hybrid thinking mode)
+    text = _strip_thinking(text)
     # If output contains multiple lines
     for line in text.splitlines():
         line = line.strip()
-        # take the first non-empty one
-        if line:
-            # Convert SELFIES to SMILES if detected
-            if _is_selfies(line):
-                return _selfies_to_smiles(line)
-            return line
+        # Skip XML-like tags and empty lines
+        if not line or line.startswith("<"):
+            continue
+        # Convert SELFIES to SMILES if detected
+        if _is_selfies(line):
+            return _selfies_to_smiles(line)
+        return line
     return text
 
 
