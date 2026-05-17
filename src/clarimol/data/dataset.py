@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import signal
 from pathlib import Path
 from typing import Iterator
 from rdkit import Chem
@@ -137,11 +138,30 @@ def build_dataset(
     # Collect raw samples per task
     raw: dict[str, list[Sample]] = {t.name: [] for t in tasks}
     n_total = len(smiles_list)
+    mol_timeout = 30  # seconds per molecule
+    skipped = 0
+
+    def _timeout_handler(signum, frame):
+        raise TimeoutError
+
     for i, smi in enumerate(smiles_list):
         if (i + 1) % 10_000 == 0:
-            logger.info("Processing molecule %d / %d", i + 1, n_total)
-        for sample in _generate_for_molecule(smi, tasks, rng):
-            raw[sample.task].append(sample)
+            logger.info("Processing molecule %d / %d (skipped %d timeouts)", i + 1, n_total, skipped)
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        try:
+            signal.alarm(mol_timeout)
+            for sample in _generate_for_molecule(smi, tasks, rng):
+                raw[sample.task].append(sample)
+            signal.alarm(0)
+        except TimeoutError:
+            skipped += 1
+            logger.debug("Timeout on molecule %d: %s", i, smi[:80])
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+    if skipped:
+        logger.info("Skipped %d molecules due to timeout (%ds limit)", skipped, mol_timeout)
     logger.info("Raw samples per task: %s", {k: len(v) for k, v in raw.items()})
     # Prune + sort each task independently
     if pruning is None:
