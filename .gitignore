@@ -10,6 +10,8 @@ data/
 # Training outputs
 output/
 
+figures/
+
 # Any logs
 *.log
 
