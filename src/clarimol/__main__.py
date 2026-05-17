@@ -34,6 +34,12 @@ def cmd_prepare(args: argparse.Namespace) -> None:
             max_entries=args.max_molecules or 1000,
             cache_dir=args.cod_cache_dir,
         )
+    elif args.source == "qm9":
+        from clarimol.data.qm9 import fetch_qm9
+        smiles = fetch_qm9(max_molecules=args.max_molecules)
+    elif args.source == "chembl":
+        from clarimol.data.chembl import fetch_chembl
+        smiles = fetch_chembl(max_molecules=args.max_molecules)
     elif args.smiles_file:
         from clarimol.data.dataset import load_smiles_file
         logger.info("Loading SMILES from %s", args.smiles_file)
@@ -311,8 +317,8 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     # Prepare
     p_prep = sub.add_parser("prepare", help="Build CLARIMOL dataset")
-    p_prep.add_argument("--source", default="zinc", choices=["zinc", "cod", "cod-bulk", "file"],
-                        help="Molecule source: zinc (ZINC250K), cod (COD API), cod-bulk (bulk COD), file (custom)")
+    p_prep.add_argument("--source", default="zinc", choices=["zinc", "cod", "cod-bulk", "qm9", "chembl", "file"],
+                        help="Molecule source: zinc, cod, cod-bulk, qm9, chembl, file")
     p_prep.add_argument("--smiles-file", type=str, default=None, help="Path to SMILES file (--source file)")
     p_prep.add_argument("--split", default="train", help="ZINC250K split (default: train)")
     p_prep.add_argument("--cod-cache-dir", default="data/cod_cache", help="Cache dir for COD CIF files")
