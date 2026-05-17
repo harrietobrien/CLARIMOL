@@ -12,6 +12,7 @@ src/clarimol/data/__init__.py
 src/clarimol/data/canonicalization.py
 src/clarimol/data/chain_length.py
 src/clarimol/data/cod.py
+src/clarimol/data/cod_bulk.py
 src/clarimol/data/dataset.py
 src/clarimol/data/downstream.py
 src/clarimol/data/fragment_assembly.py
@@ -34,6 +35,7 @@ src/clarimol/train/trainer.py
 src/clarimol/utils/__init__.py
 src/clarimol/utils/chem.py
 src/clarimol/utils/io.py
+tests/test_cod_bulk.py
 tests/test_metrics.py
 tests/test_pruning.py
 tests/test_tasks.py

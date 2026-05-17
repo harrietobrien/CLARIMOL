@@ -1,10 +1,11 @@
 """
 Bulk COD (Crystallography Open Database) SMILES pipeline.
 
-Three acquisition strategies, tried in order of speed and reliability:
-    1. COD pre-computed SMILES via rsync (fastest, ~255K structures)
-    2. COD REST API with SMILES format (no CIF parsing needed)
-    3. OpenBabel CIF→SMILES conversion (fallback for entries without SMILES)
+Four acquisition strategies, tried in order of speed and reliability:
+    1. DataWarrior COD snapshot via HTTP (fastest, ~257K structures, no rsync needed)
+    2. COD pre-computed SMILES via rsync (~255K structures)
+    3. COD REST API with SMILES format (no CIF parsing needed)
+    4. OpenBabel CIF→SMILES conversion (fallback for entries without SMILES)
 
 All strategies share the same filtering and deduplication logic via
 _is_organic_smiles() from the original cod.py module.
@@ -17,6 +18,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Iterator
 
@@ -40,7 +42,146 @@ COD_CIF_URL = "https://www.crystallography.net/cod/{cod_id}.cif"
 DATAWARRIOR_URL = "https://openmolecules.org/datawarrior/data/COD_13jan2025.zip"
 
 
-# ─── Strategy 1: COD pre-computed SMILES via rsync ──────────────────────────
+# Strategy 1: DataWarrior COD snapshot (HTTP)
+
+def fetch_cod_datawarrior(
+    cache_dir: str | Path,
+    timeout: int = 600,
+) -> list[tuple[str, str]]:
+    """
+    Download the DataWarrior COD snapshot ZIP and extract SMILES.
+    The ZIP contains a tab-separated file with COD IDs and SMILES.
+    Returns list of (cod_id, smiles) tuples.
+    """
+    cache = Path(cache_dir)
+    cache.mkdir(parents=True, exist_ok=True)
+    zip_path = cache / "COD_datawarrior.zip"
+    extract_dir = cache / "datawarrior"
+
+    # Download if not cached
+    if not zip_path.exists():
+        logger.info("Downloading DataWarrior COD snapshot from %s", DATAWARRIOR_URL)
+        try:
+            resp = requests.get(DATAWARRIOR_URL, timeout=timeout, stream=True)
+            resp.raise_for_status()
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info("Downloaded %.1f MB to %s",
+                        zip_path.stat().st_size / 1e6, zip_path)
+        except Exception as e:
+            logger.warning("DataWarrior download failed: %s", e)
+            if zip_path.exists():
+                zip_path.unlink()
+            return []
+
+    # Extract if not already done
+    if not extract_dir.exists():
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(extract_dir)
+            logger.info("Extracted to %s", extract_dir)
+        except Exception as e:
+            logger.warning("Failed to extract ZIP: %s", e)
+            return []
+
+    # Parse extracted files. DataWarrior .dwar files are tab-separated with
+    # XML-like header/footer tags. We auto-detect SMILES and ID columns.
+    results: list[tuple[str, str]] = []
+    for fpath in extract_dir.rglob("*"):
+        if fpath.is_dir():
+            continue
+        try:
+            text = fpath.read_text(errors="replace")
+            lines = text.splitlines()
+
+            # Find the header row (first non-tag, non-empty line with tabs)
+            header_idx = None
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("<") or stripped.startswith("#"):
+                    continue
+                if "\t" in stripped:
+                    header_idx = i
+                    break
+
+            if header_idx is None:
+                logger.debug("No tab-separated header in %s, skipping", fpath.name)
+                continue
+
+            headers = lines[header_idx].split("\t")
+            headers_lower = [h.strip().lower() for h in headers]
+            logger.info("File %s: %d columns, headers=%s",
+                        fpath.name, len(headers), headers_lower[:10])
+
+            # Find SMILES and ID columns by name
+            smiles_idx = None
+            id_idx = None
+            for j, h in enumerate(headers_lower):
+                if smiles_idx is None and ("smiles" in h or "smi" == h):
+                    smiles_idx = j
+                if id_idx is None and ("cod" in h or h in ("id", "file", "entry")):
+                    id_idx = j
+
+            if smiles_idx is None:
+                # Fallback: probe first data row to find parseable SMILES column
+                logger.info("No SMILES header in %s, probing first data row", fpath.name)
+                if header_idx + 1 < len(lines):
+                    test_parts = lines[header_idx + 1].split("\t")
+                    for j, p in enumerate(test_parts):
+                        p = p.strip()
+                        if not p or len(p) < 3:
+                            continue
+                        if Chem.MolFromSmiles(p) is not None:
+                            smiles_idx = j
+                            logger.info("Auto-detected SMILES at column %d (header: %s)",
+                                        j, headers[j] if j < len(headers) else "?")
+                            break
+
+            if smiles_idx is None:
+                logger.warning("Could not find SMILES column in %s", fpath.name)
+                continue
+
+            if id_idx is None:
+                # Try to find a numeric ID column
+                if header_idx + 1 < len(lines):
+                    test_parts = lines[header_idx + 1].split("\t")
+                    for j, p in enumerate(test_parts):
+                        if j == smiles_idx:
+                            continue
+                        if p.strip().isdigit() and len(p.strip()) >= 4:
+                            id_idx = j
+                            break
+
+            # Parse data rows
+            file_count = 0
+            for line in lines[header_idx + 1:]:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("<"):
+                    continue
+                parts = stripped.split("\t")
+                if len(parts) <= smiles_idx:
+                    continue
+                smi = parts[smiles_idx].strip()
+                if not smi:
+                    continue
+                if id_idx is not None and len(parts) > id_idx:
+                    cod_id = parts[id_idx].strip()
+                else:
+                    cod_id = str(len(results))
+                results.append((cod_id, smi))
+                file_count += 1
+
+            logger.info("Parsed %d entries from %s", file_count, fpath.name)
+        except Exception as e:
+            logger.debug("Failed to parse %s: %s", fpath, e)
+
+    logger.info("DataWarrior: extracted %d entries with SMILES", len(results))
+    return results
+
+
+# Strategy 2: COD pre-computed SMILES via rsync
 
 def fetch_cod_smiles_rsync(
     output_dir: str | Path,
@@ -63,7 +204,18 @@ def fetch_cod_smiles_rsync(
         )
         logger.info("rsync complete: %s", out)
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.warning("rsync failed: %s", e)
+        logger.warning("rsync failed: %s — trying SVN", e)
+        try:
+            subprocess.run(
+                ["svn", "export", "--non-interactive", COD_SMI_SVN, str(out)],
+                timeout=timeout,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("SVN export complete: %s", out)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e2:
+            logger.warning("SVN export also failed: %s", e2)
     return out
 
 
@@ -91,7 +243,7 @@ def parse_smi_directory(smi_dir: str | Path) -> Iterator[tuple[str, str]]:
     logger.info("Parsed %d .smi files from %s", count, smi_dir)
 
 
-# ─── Strategy 2: COD REST API with SMILES ───────────────────────────────────
+# Strategy 3: COD REST API with SMILES
 
 def fetch_cod_smiles_api(
     max_entries: int = 50000,
@@ -139,7 +291,7 @@ def fetch_cod_smiles_api(
     return results
 
 
-# ─── Strategy 3: OpenBabel CIF→SMILES conversion ────────────────────────────
+# Strategy 4: OpenBabel CIF→SMILES conversion
 
 def _obabel_available() -> bool:
     """Check if OpenBabel CLI is installed."""
@@ -227,7 +379,7 @@ def cif_to_smiles_batch(
     return results
 
 
-# ─── Filtering & Deduplication ───────────────────────────────────────────────
+# Filtering & Deduplication
 
 # Optional element whitelist for strict organic-only filtering
 ORGANIC_ELEMENTS = {1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53}  # H,B,C,N,O,F,Si,P,S,Cl,Br,I
@@ -315,7 +467,7 @@ def filter_smiles(
     return results
 
 
-# ─── Main Pipeline ───────────────────────────────────────────────────────────
+# Main Pipeline
 
 def fetch_cod_bulk(
     max_molecules: int = 250000,
@@ -329,20 +481,21 @@ def fetch_cod_bulk(
     Fetch organic molecular crystal SMILES from COD using multiple strategies.
 
     Tries strategies in order until enough molecules are collected:
-        1. "rsync" — COD pre-computed SMILES (comprehensive, ~255K structures)
-        2. "api" — COD REST API (moderate yield)
-        3. "obabel" — CIF download + OpenBabel conversion (slow, fallback)
+        1. "datawarrior" — DataWarrior COD snapshot via HTTP (~257K structures)
+        2. "rsync" — COD pre-computed SMILES (comprehensive, ~255K structures)
+        3. "api" — COD REST API (moderate yield)
+        4. "obabel" — CIF download + OpenBabel conversion (slow, fallback)
 
     :param max_molecules: Target number of unique SMILES
     :param cache_dir: Directory for caching downloaded data
-    :param strategies: Which strategies to try (default: ["rsync", "api"])
+    :param strategies: Which strategies to try (default: ["datawarrior", "rsync", "api"])
     :param strict_organic: Apply organic element whitelist and require carbon
     :param min_atoms: Minimum heavy atom count
     :param max_atoms: Maximum heavy atom count
     :return: List of unique, valid, canonical SMILES strings
     """
     if strategies is None:
-        strategies = ["rsync", "api"]
+        strategies = ["datawarrior", "rsync", "api"]
 
     cache = Path(cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
@@ -362,7 +515,13 @@ def fetch_cod_bulk(
         if len(all_entries) >= max_molecules * 2:  # fetch extra for filtering headroom
             break
 
-        if strategy == "api":
+        if strategy == "datawarrior":
+            logger.info("Strategy: DataWarrior COD snapshot")
+            dw_results = fetch_cod_datawarrior(cache)
+            all_entries.extend(dw_results)
+            logger.info("After DataWarrior: %d total raw entries", len(all_entries))
+
+        elif strategy == "api":
             logger.info("Strategy: COD REST API")
             api_results = fetch_cod_smiles_api(
                 max_entries=max_molecules * 3,
