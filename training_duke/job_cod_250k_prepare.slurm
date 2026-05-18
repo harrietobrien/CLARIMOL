@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=06:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/logs/cod_shift/cod_250k_prep_%j.log
 #SBATCH --error=output/logs/cod_shift/cod_250k_prep_%j.err
 #SBATCH --requeue

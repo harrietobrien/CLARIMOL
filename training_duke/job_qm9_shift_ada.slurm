@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:a6000:1
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/logs/domain_shift/qm9_shift_ada_%j.log
 #SBATCH --error=output/logs/domain_shift/qm9_shift_ada_%j.err
 #SBATCH --requeue

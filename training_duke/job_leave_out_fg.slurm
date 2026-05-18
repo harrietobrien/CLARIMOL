@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/logs/task_contrib/leave_out_fg_%j.log
 #SBATCH --error=output/logs/task_contrib/leave_out_fg_%j.err
 #SBATCH --requeue
