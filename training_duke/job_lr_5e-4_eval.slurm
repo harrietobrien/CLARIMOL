@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cm_lr5e4
+#SBATCH --job-name=cm_lr5e4_ev
 #SBATCH -A scavenger-h200
 #SBATCH -p scavenger-h200
 #SBATCH --nodes=1
@@ -8,12 +8,12 @@
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
-#SBATCH --output=output/logs/lr_lora/lr_5e-4_rerun_%j.log
-#SBATCH --error=output/logs/lr_lora/lr_5e-4_rerun_%j.err
+#SBATCH --output=output/logs/lr_lora/lr_5e-4_eval_%j.log
+#SBATCH --error=output/logs/lr_lora/lr_5e-4_eval_%j.err
 #SBATCH --requeue
 #SBATCH --exclude=dcc-h200-gpu-05
 #
-# Rerun: LR=5e-4 ablation only (train + eval)
+# Eval only: lr_5e-4 (training already completed)
 #
 
 set -euo pipefail
@@ -28,27 +28,11 @@ module load Anaconda3 2>/dev/null || module load conda 2>/dev/null || true
 eval "$(conda shell.bash hook)"
 conda activate /work/gc237/conda_envs/clarimol
 
-MODEL="meta-llama/Llama-3.1-8B-Instruct"
 OUT_DIR="output/ablation_lr/lr_5e-4"
-SEED=42
 
-echo "=== LR=5e-4 Rerun ==="
+echo "=== LR=5e-4 Eval Only ==="
 nvidia-smi
 echo "Start: $(date)"
-
-rm -rf "$OUT_DIR"
-mkdir -p "$OUT_DIR"
-
-python -m clarimol train \
-    --model "$MODEL" \
-    --data-dir data/clarimol \
-    --output-dir "$OUT_DIR" \
-    --no-unsloth --max-length 512 \
-    --batch-size 16 --grad-accum 1 \
-    --lr 5e-4 --epochs 1 \
-    --lora-r 64 --lora-alpha 16 \
-    --bf16 --no-4bit --no-wandb \
-    --save-steps 500 --seed "$SEED"
 
 python -m clarimol evaluate \
     --model-path "$OUT_DIR/final" \

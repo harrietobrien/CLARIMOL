@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:h200:1
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=output/logs/lr_lora/lora_sweep_%j.log
 #SBATCH --error=output/logs/lr_lora/lora_sweep_%j.err
 #SBATCH --requeue
