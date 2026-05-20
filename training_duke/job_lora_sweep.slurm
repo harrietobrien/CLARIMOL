@@ -17,6 +17,9 @@
 # r in {16, 32, 128}, alpha in {r, 2r}, lr=1e-4
 # (r=64/a=16 at lr=1e-4 is the multi-seed baseline — skip)
 #
+# Preemption-safe: skips configs with results.json, resumes from checkpoint,
+# runs eval if final/ exists but results.json doesn't.
+#
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
@@ -45,8 +48,33 @@ for RANK in 16 32 128; do
         mkdir -p "$OUT_DIR"
         echo ""
         echo "=== LoRA r=$RANK, alpha=$ALPHA ==="
-        echo "Start: $(date)"
 
+        # Skip if eval results already exist
+        if [ -f "$OUT_DIR/results.json" ]; then
+            echo "SKIP: results.json exists, already complete"
+            continue
+        fi
+
+        # If final/ exists but no results.json, just run eval
+        if [ -d "$OUT_DIR/final" ]; then
+            echo "Training done, running eval only..."
+            python -m clarimol evaluate \
+                --model-path "$OUT_DIR/final" \
+                --data-dir data/test \
+                --output-file "$OUT_DIR/results.json" \
+                --no-unsloth --batch-size 16
+            echo "Eval done: $(date)"
+            continue
+        fi
+
+        # Check if there are existing checkpoints to resume from
+        RESUME_ARG=""
+        if ls "$OUT_DIR"/checkpoint-* 1>/dev/null 2>&1; then
+            echo "Found checkpoints, will resume"
+            RESUME_ARG="--resume"
+        fi
+
+        echo "Training start: $(date)"
         python -m clarimol train \
             --model "$MODEL" \
             --data-dir data/clarimol \
@@ -56,7 +84,8 @@ for RANK in 16 32 128; do
             --lr 1e-4 --epochs 1 \
             --lora-r "$RANK" --lora-alpha "$ALPHA" \
             --bf16 --no-4bit --no-wandb \
-            --save-steps 500 --seed "$SEED"
+            --save-steps 100 \
+            --seed "$SEED" $RESUME_ARG
 
         python -m clarimol evaluate \
             --model-path "$OUT_DIR/final" \

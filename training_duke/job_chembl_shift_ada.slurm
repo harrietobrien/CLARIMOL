@@ -13,6 +13,7 @@
 #
 # ChEMBL domain shift on Ada GPU (4-bit quantization to fit 48GB)
 # PREREQUISITE: data/chembl_250k/ prepared, multi_seed llama model exists
+# Preemption-safe: skips completed steps, resumes from checkpoint
 #
 
 set -euo pipefail
@@ -44,19 +45,25 @@ fi
 
 mkdir -p "$BASE_OUT"
 
-# Zero-shot baseline
-echo ""
-echo "=== Zero-shot on ChEMBL ==="
-python -m clarimol evaluate \
-    --model-path "$MODEL" \
-    --data-dir "$CHEMBL_DATA" \
-    --output-file "$BASE_OUT/zero_shot_chembl.json" \
-    --no-unsloth --batch-size 4
-
-# ZINC-trained on ChEMBL
-if [ -d "$ZINC_MODEL" ]; then
+# Step 1: Zero-shot baseline
+if [ -f "$BASE_OUT/zero_shot_chembl.json" ]; then
+    echo "SKIP: zero_shot_chembl.json exists"
+else
     echo ""
-    echo "=== ZINC-trained → ChEMBL ==="
+    echo "=== Zero-shot on ChEMBL ==="
+    python -m clarimol evaluate \
+        --model-path "$MODEL" \
+        --data-dir "$CHEMBL_DATA" \
+        --output-file "$BASE_OUT/zero_shot_chembl.json" \
+        --no-unsloth --batch-size 4
+fi
+
+# Step 2: ZINC-trained on ChEMBL
+if [ -f "$BASE_OUT/zinc_on_chembl.json" ]; then
+    echo "SKIP: zinc_on_chembl.json exists"
+elif [ -d "$ZINC_MODEL" ]; then
+    echo ""
+    echo "=== ZINC-trained -> ChEMBL ==="
     python -m clarimol evaluate \
         --model-path "$ZINC_MODEL" \
         --data-dir "$CHEMBL_DATA" \
@@ -64,37 +71,54 @@ if [ -d "$ZINC_MODEL" ]; then
         --no-unsloth --batch-size 8
 fi
 
-# Fine-tune on ChEMBL (4-bit to fit Ada 48GB)
-echo ""
-echo "=== Fine-tuning on ChEMBL ==="
-python -m clarimol train \
-    --model "$MODEL" \
-    --data-dir "$CHEMBL_DATA" \
-    --output-dir "$BASE_OUT/chembl_finetuned" \
-    --no-unsloth --max-length 512 \
-    --batch-size 8 --grad-accum 2 \
-    --lr 1e-4 --epochs 1 \
-    --lora-r 64 --lora-alpha 16 \
-    --no-fp16 --bf16 --no-wandb \
-    --save-steps 500 --seed "$SEED"
+# Step 3: Fine-tune on ChEMBL
+if [ ! -d "$BASE_OUT/chembl_finetuned/final" ]; then
+    echo ""
+    echo "=== Fine-tuning on ChEMBL ==="
+    RESUME_ARG=""
+    if ls "$BASE_OUT"/chembl_finetuned/checkpoint-* 1>/dev/null 2>&1; then
+        echo "Found checkpoints, will resume"
+        RESUME_ARG="--resume"
+    fi
+    python -m clarimol train \
+        --model "$MODEL" \
+        --data-dir "$CHEMBL_DATA" \
+        --output-dir "$BASE_OUT/chembl_finetuned" \
+        --no-unsloth --max-length 512 \
+        --batch-size 8 --grad-accum 2 \
+        --lr 1e-4 --epochs 1 \
+        --lora-r 64 --lora-alpha 16 \
+        --no-fp16 --bf16 --no-wandb \
+        --save-steps 100 --seed "$SEED" $RESUME_ARG
+else
+    echo "SKIP: chembl_finetuned/final exists"
+fi
 
-# ChEMBL-finetuned on ChEMBL
-echo ""
-echo "=== ChEMBL-finetuned → ChEMBL ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/chembl_finetuned/final" \
-    --data-dir "$CHEMBL_DATA" \
-    --output-file "$BASE_OUT/chembl_on_chembl.json" \
-    --no-unsloth --batch-size 8
+# Step 4: ChEMBL-finetuned on ChEMBL
+if [ -f "$BASE_OUT/chembl_on_chembl.json" ]; then
+    echo "SKIP: chembl_on_chembl.json exists"
+else
+    echo ""
+    echo "=== ChEMBL-finetuned -> ChEMBL ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/chembl_finetuned/final" \
+        --data-dir "$CHEMBL_DATA" \
+        --output-file "$BASE_OUT/chembl_on_chembl.json" \
+        --no-unsloth --batch-size 8
+fi
 
-# ChEMBL-finetuned on ZINC (regression)
-echo ""
-echo "=== ChEMBL-finetuned → ZINC (regression) ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/chembl_finetuned/final" \
-    --data-dir data/test \
-    --output-file "$BASE_OUT/chembl_on_zinc.json" \
-    --no-unsloth --batch-size 8
+# Step 5: ChEMBL-finetuned on ZINC (regression)
+if [ -f "$BASE_OUT/chembl_on_zinc.json" ]; then
+    echo "SKIP: chembl_on_zinc.json exists"
+else
+    echo ""
+    echo "=== ChEMBL-finetuned -> ZINC (regression) ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/chembl_finetuned/final" \
+        --data-dir data/test \
+        --output-file "$BASE_OUT/chembl_on_zinc.json" \
+        --no-unsloth --batch-size 8
+fi
 
 echo ""
 echo "=== ChEMBL domain shift complete at $(date) ==="

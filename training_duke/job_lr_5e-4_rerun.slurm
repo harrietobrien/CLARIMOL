@@ -14,6 +14,7 @@
 #SBATCH --exclude=dcc-h200-gpu-05
 #
 # Rerun: LR=5e-4 ablation only (train + eval)
+# Preemption-safe: skips completed steps, resumes from checkpoint
 #
 
 set -euo pipefail
@@ -36,19 +37,35 @@ echo "=== LR=5e-4 Rerun ==="
 nvidia-smi
 echo "Start: $(date)"
 
-rm -rf "$OUT_DIR"
+# Skip if already complete
+if [ -f "$OUT_DIR/results.json" ]; then
+    echo "SKIP: results.json exists, already complete"
+    exit 0
+fi
+
 mkdir -p "$OUT_DIR"
 
-python -m clarimol train \
-    --model "$MODEL" \
-    --data-dir data/clarimol \
-    --output-dir "$OUT_DIR" \
-    --no-unsloth --max-length 512 \
-    --batch-size 16 --grad-accum 1 \
-    --lr 5e-4 --epochs 1 \
-    --lora-r 64 --lora-alpha 16 \
-    --bf16 --no-4bit --no-wandb \
-    --save-steps 500 --seed "$SEED"
+# Skip training if final/ already exists
+if [ -d "$OUT_DIR/final" ]; then
+    echo "Training already complete, running eval only..."
+else
+    RESUME_ARG=""
+    if ls "$OUT_DIR"/checkpoint-* 1>/dev/null 2>&1; then
+        echo "Found checkpoints, will resume"
+        RESUME_ARG="--resume"
+    fi
+
+    python -m clarimol train \
+        --model "$MODEL" \
+        --data-dir data/clarimol \
+        --output-dir "$OUT_DIR" \
+        --no-unsloth --max-length 512 \
+        --batch-size 16 --grad-accum 1 \
+        --lr 5e-4 --epochs 1 \
+        --lora-r 64 --lora-alpha 16 \
+        --bf16 --no-4bit --no-wandb \
+        --save-steps 100 --seed "$SEED" $RESUME_ARG
+fi
 
 python -m clarimol evaluate \
     --model-path "$OUT_DIR/final" \
