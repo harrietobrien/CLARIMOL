@@ -16,6 +16,7 @@
 # Step 2: COD 250K domain shift experiment (train + cross-eval)
 # PREREQUISITE: job_cod_250k_prepare.slurm (needs data/cod_250k)
 # PREREQUISITE: job_multi_seed_llama.slurm (needs ZINC-trained model)
+# Preemption-safe: skips completed steps, resumes from checkpoint
 #
 
 set -euo pipefail
@@ -40,7 +41,6 @@ echo "=== COD 250K Domain Shift Experiment ==="
 nvidia-smi
 echo "Start: $(date)"
 
-# Verify COD data exists
 if [ ! -d "$COD_DATA" ] || [ -z "$(ls -A "$COD_DATA" 2>/dev/null)" ]; then
     echo "ERROR: COD 250K data not found at $COD_DATA"
     echo "Run job_cod_250k_prepare.slurm first"
@@ -49,19 +49,25 @@ fi
 
 mkdir -p "$BASE_OUT"
 
-# ─── Step 1: Zero-shot baseline on COD 250K ─────────────────────────────────
-echo ""
-echo "=== Zero-shot on COD 250K ==="
-python -m clarimol evaluate \
-    --model-path "$MODEL" \
-    --data-dir "$COD_DATA" \
-    --output-file "$BASE_OUT/zero_shot_cod.json" \
-    --no-unsloth --batch-size 8
-
-# ─── Step 2: ZINC-trained model on COD 250K ─────────────────────────────────
-if [ -d "$ZINC_MODEL" ]; then
+# Step 1: Zero-shot baseline on COD 250K
+if [ -f "$BASE_OUT/zero_shot_cod.json" ]; then
+    echo "SKIP: zero_shot_cod.json exists"
+else
     echo ""
-    echo "=== ZINC-trained → COD 250K ==="
+    echo "=== Zero-shot on COD 250K ==="
+    python -m clarimol evaluate \
+        --model-path "$MODEL" \
+        --data-dir "$COD_DATA" \
+        --output-file "$BASE_OUT/zero_shot_cod.json" \
+        --no-unsloth --batch-size 8
+fi
+
+# Step 2: ZINC-trained model on COD 250K
+if [ -f "$BASE_OUT/zinc_on_cod.json" ]; then
+    echo "SKIP: zinc_on_cod.json exists"
+elif [ -d "$ZINC_MODEL" ]; then
+    echo ""
+    echo "=== ZINC-trained -> COD 250K ==="
     python -m clarimol evaluate \
         --model-path "$ZINC_MODEL" \
         --data-dir "$COD_DATA" \
@@ -71,37 +77,54 @@ else
     echo "WARNING: ZINC model not found at $ZINC_MODEL"
 fi
 
-# ─── Step 3: Fine-tune on COD 250K ──────────────────────────────────────────
-echo ""
-echo "=== Fine-tuning on COD 250K ==="
-python -m clarimol train \
-    --model "$MODEL" \
-    --data-dir "$COD_DATA" \
-    --output-dir "$BASE_OUT/cod_finetuned" \
-    --no-unsloth --max-length 512 \
-    --batch-size 16 --grad-accum 1 \
-    --lr 1e-4 --epochs 1 \
-    --lora-r 64 --lora-alpha 16 \
-    --bf16 --no-4bit --no-wandb \
-    --save-steps 500 --seed "$SEED"
+# Step 3: Fine-tune on COD 250K
+if [ ! -d "$BASE_OUT/cod_finetuned/final" ]; then
+    echo ""
+    echo "=== Fine-tuning on COD 250K ==="
+    RESUME_ARG=""
+    if ls "$BASE_OUT"/cod_finetuned/checkpoint-* 1>/dev/null 2>&1; then
+        echo "Found checkpoints, will resume"
+        RESUME_ARG="--resume"
+    fi
+    python -m clarimol train \
+        --model "$MODEL" \
+        --data-dir "$COD_DATA" \
+        --output-dir "$BASE_OUT/cod_finetuned" \
+        --no-unsloth --max-length 512 \
+        --batch-size 16 --grad-accum 1 \
+        --lr 1e-4 --epochs 1 \
+        --lora-r 64 --lora-alpha 16 \
+        --bf16 --no-4bit --no-wandb \
+        --save-steps 100 --seed "$SEED" $RESUME_ARG
+else
+    echo "SKIP: cod_finetuned/final exists"
+fi
 
-# ─── Step 4: Evaluate COD-finetuned on COD ──────────────────────────────────
-echo ""
-echo "=== COD-finetuned → COD 250K ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/cod_finetuned/final" \
-    --data-dir "$COD_DATA" \
-    --output-file "$BASE_OUT/cod_on_cod.json" \
-    --no-unsloth --batch-size 16
+# Step 4: Evaluate COD-finetuned on COD
+if [ -f "$BASE_OUT/cod_on_cod.json" ]; then
+    echo "SKIP: cod_on_cod.json exists"
+else
+    echo ""
+    echo "=== COD-finetuned -> COD 250K ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/cod_finetuned/final" \
+        --data-dir "$COD_DATA" \
+        --output-file "$BASE_OUT/cod_on_cod.json" \
+        --no-unsloth --batch-size 16
+fi
 
-# ─── Step 5: Regression check — COD-finetuned on ZINC ───────────────────────
-echo ""
-echo "=== COD-finetuned → ZINC (regression) ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/cod_finetuned/final" \
-    --data-dir data/test \
-    --output-file "$BASE_OUT/cod_on_zinc.json" \
-    --no-unsloth --batch-size 16
+# Step 5: Regression check -- COD-finetuned on ZINC
+if [ -f "$BASE_OUT/cod_on_zinc.json" ]; then
+    echo "SKIP: cod_on_zinc.json exists"
+else
+    echo ""
+    echo "=== COD-finetuned -> ZINC (regression) ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/cod_finetuned/final" \
+        --data-dir data/test \
+        --output-file "$BASE_OUT/cod_on_zinc.json" \
+        --no-unsloth --batch-size 16
+fi
 
 echo ""
 echo "=== COD 250K domain shift complete at $(date) ==="

@@ -13,6 +13,7 @@
 #
 # QM9 domain shift on Ada GPU (4-bit quantization to fit 48GB)
 # PREREQUISITE: data/qm9/ uploaded, multi_seed llama model exists
+# Preemption-safe: skips completed steps, resumes from checkpoint
 #
 
 set -euo pipefail
@@ -44,19 +45,25 @@ fi
 
 mkdir -p "$BASE_OUT"
 
-# Zero-shot baseline
-echo ""
-echo "=== Zero-shot on QM9 ==="
-python -m clarimol evaluate \
-    --model-path "$MODEL" \
-    --data-dir "$QM9_DATA" \
-    --output-file "$BASE_OUT/zero_shot_qm9.json" \
-    --no-unsloth --batch-size 4
-
-# ZINC-trained on QM9
-if [ -d "$ZINC_MODEL" ]; then
+# Step 1: Zero-shot baseline
+if [ -f "$BASE_OUT/zero_shot_qm9.json" ]; then
+    echo "SKIP: zero_shot_qm9.json exists"
+else
     echo ""
-    echo "=== ZINC-trained → QM9 ==="
+    echo "=== Zero-shot on QM9 ==="
+    python -m clarimol evaluate \
+        --model-path "$MODEL" \
+        --data-dir "$QM9_DATA" \
+        --output-file "$BASE_OUT/zero_shot_qm9.json" \
+        --no-unsloth --batch-size 4
+fi
+
+# Step 2: ZINC-trained on QM9
+if [ -f "$BASE_OUT/zinc_on_qm9.json" ]; then
+    echo "SKIP: zinc_on_qm9.json exists"
+elif [ -d "$ZINC_MODEL" ]; then
+    echo ""
+    echo "=== ZINC-trained -> QM9 ==="
     python -m clarimol evaluate \
         --model-path "$ZINC_MODEL" \
         --data-dir "$QM9_DATA" \
@@ -64,37 +71,54 @@ if [ -d "$ZINC_MODEL" ]; then
         --no-unsloth --batch-size 8
 fi
 
-# Fine-tune on QM9 (4-bit to fit Ada 48GB)
-echo ""
-echo "=== Fine-tuning on QM9 ==="
-python -m clarimol train \
-    --model "$MODEL" \
-    --data-dir "$QM9_DATA" \
-    --output-dir "$BASE_OUT/qm9_finetuned" \
-    --no-unsloth --max-length 512 \
-    --batch-size 8 --grad-accum 2 \
-    --lr 1e-4 --epochs 1 \
-    --lora-r 64 --lora-alpha 16 \
-    --no-fp16 --bf16 --no-wandb \
-    --save-steps 500 --seed "$SEED"
+# Step 3: Fine-tune on QM9
+if [ ! -d "$BASE_OUT/qm9_finetuned/final" ]; then
+    echo ""
+    echo "=== Fine-tuning on QM9 ==="
+    RESUME_ARG=""
+    if ls "$BASE_OUT"/qm9_finetuned/checkpoint-* 1>/dev/null 2>&1; then
+        echo "Found checkpoints, will resume"
+        RESUME_ARG="--resume"
+    fi
+    python -m clarimol train \
+        --model "$MODEL" \
+        --data-dir "$QM9_DATA" \
+        --output-dir "$BASE_OUT/qm9_finetuned" \
+        --no-unsloth --max-length 512 \
+        --batch-size 8 --grad-accum 2 \
+        --lr 1e-4 --epochs 1 \
+        --lora-r 64 --lora-alpha 16 \
+        --no-fp16 --bf16 --no-wandb \
+        --save-steps 100 --seed "$SEED" $RESUME_ARG
+else
+    echo "SKIP: qm9_finetuned/final exists"
+fi
 
-# QM9-finetuned on QM9
-echo ""
-echo "=== QM9-finetuned → QM9 ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/qm9_finetuned/final" \
-    --data-dir "$QM9_DATA" \
-    --output-file "$BASE_OUT/qm9_on_qm9.json" \
-    --no-unsloth --batch-size 8
+# Step 4: QM9-finetuned on QM9
+if [ -f "$BASE_OUT/qm9_on_qm9.json" ]; then
+    echo "SKIP: qm9_on_qm9.json exists"
+else
+    echo ""
+    echo "=== QM9-finetuned -> QM9 ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/qm9_finetuned/final" \
+        --data-dir "$QM9_DATA" \
+        --output-file "$BASE_OUT/qm9_on_qm9.json" \
+        --no-unsloth --batch-size 8
+fi
 
-# QM9-finetuned on ZINC (regression)
-echo ""
-echo "=== QM9-finetuned → ZINC (regression) ==="
-python -m clarimol evaluate \
-    --model-path "$BASE_OUT/qm9_finetuned/final" \
-    --data-dir data/test \
-    --output-file "$BASE_OUT/qm9_on_zinc.json" \
-    --no-unsloth --batch-size 8
+# Step 5: QM9-finetuned on ZINC (regression)
+if [ -f "$BASE_OUT/qm9_on_zinc.json" ]; then
+    echo "SKIP: qm9_on_zinc.json exists"
+else
+    echo ""
+    echo "=== QM9-finetuned -> ZINC (regression) ==="
+    python -m clarimol evaluate \
+        --model-path "$BASE_OUT/qm9_finetuned/final" \
+        --data-dir data/test \
+        --output-file "$BASE_OUT/qm9_on_zinc.json" \
+        --no-unsloth --batch-size 8
+fi
 
 echo ""
 echo "=== QM9 domain shift complete at $(date) ==="
