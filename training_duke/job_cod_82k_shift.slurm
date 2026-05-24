@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=cm_cod82k
-#SBATCH --partition=scavenger-gpu
+#SBATCH -A scavenger-h200
+#SBATCH -p scavenger-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:a6000:1
+#SBATCH --mem=128G
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
 #SBATCH --output=output/logs/cod_shift/cod_82k_shift_%j.log
 #SBATCH --error=output/logs/cod_shift/cod_82k_shift_%j.err
