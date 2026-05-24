@@ -144,8 +144,10 @@ def evaluate_parsing(
         # Extract answer based on task type
         if task == "functional_group":
             pred = _extract_yes_no(pred_raw)
-        elif task in ("ring_counting", "chain_length"):
+        elif task in ("ring_counting", "chain_length", "topological_distance"):
             pred = _extract_integer(pred_raw)
+        elif task in ("stereocenter", "atom_degree"):
+            pred = _strip_thinking(pred_raw).strip()
         else:
             pred = _extract_smiles(pred_raw)
         if pred is None:
