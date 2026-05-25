@@ -165,3 +165,113 @@ fragment_assembly:
     molecular structure.
 
     **SMILES:** {smiles}
+
+atom_degree:
+  - >-
+    What is the sorted heavy-atom degree sequence of this molecule?
+    List the number of heavy-atom neighbors for each atom, sorted in
+    ascending order, separated by commas. Example: 1,1,2,2,3
+
+    **SMILES:** {smiles}
+  - >-
+    For the molecule below, determine each heavy atom's connectivity
+    (number of bonded heavy atoms), then report the sorted sequence
+    as comma-separated integers. Example: 1,1,1,2,3
+
+    **SMILES:** {smiles}
+  - >-
+    Count the number of heavy-atom bonds for every atom in this molecule.
+    Sort the counts in ascending order and list them separated by commas.
+
+    **SMILES:** {smiles}
+  - >-
+    Compute the degree (number of heavy-atom neighbors) for each atom
+    in the molecule, sort the values, and output them as a comma-separated
+    list with no spaces. Example: 1,1,2,2,3
+
+    **SMILES:** {smiles}
+  - >-
+    Determine the heavy-atom degree sequence of the given molecule.
+    Report as a sorted comma-separated list of integers.
+
+    **SMILES:** {smiles}
+  - >-
+    Analyze the molecular graph encoded by this SMILES and output the
+    sorted sequence of atom degrees (heavy-atom neighbor counts),
+    separated by commas.
+
+    **SMILES:** {smiles}
+
+stereocenter:
+  - >-
+    Identify all stereocenters in the molecule and assign their
+    CIP (R/S) labels. Format: Symbol#Index:Label separated by
+    comma-space. Example: C2:R, C5:S
+
+    **SMILES:** {smiles}
+  - >-
+    Find every chiral center in this molecule and report its CIP
+    designation. Use the format AtomSymbol followed by atom index,
+    colon, then R or S. Separate multiple centers with comma-space.
+
+    **SMILES:** {smiles}
+  - >-
+    Determine the stereochemistry of all chiral atoms in the molecule
+    below. Report each as SymbolIndex:CIPLabel, separated by comma-space.
+    Example: C3:S, N7:R
+
+    **SMILES:** {smiles}
+  - >-
+    For the given molecule, identify atoms that are stereocenters and
+    assign R or S configuration to each. Format: Symbol#Index:Label.
+    Example: C2:R, C5:S
+
+    **SMILES:** {smiles}
+  - >-
+    Assign CIP stereodescriptors (R/S) to all chiral centers in this
+    molecule. Report as comma-space-separated entries in the format
+    SymbolIndex:Label.
+
+    **SMILES:** {smiles}
+  - >-
+    Examine the molecule encoded by this SMILES for chiral centers.
+    For each, report the atom symbol, index, and CIP assignment
+    (R or S). Use format: C2:R, C5:S
+
+    **SMILES:** {smiles}
+
+topological_distance:
+  - >-
+    What is the shortest path distance (in bonds) between atom {idx1}
+    ({atom1}) and atom {idx2} ({atom2}) in this molecule?
+    Answer with an integer only.
+
+    **SMILES:** {smiles}
+  - >-
+    Count the minimum number of bonds connecting atom {idx1} ({atom1})
+    to atom {idx2} ({atom2}) in the molecular graph. Provide only
+    the integer.
+
+    **SMILES:** {smiles}
+  - >-
+    Determine the topological distance (shortest bond path) between
+    atom {idx1} ({atom1}) and atom {idx2} ({atom2}) in the given
+    molecule. Answer with a single integer.
+
+    **SMILES:** {smiles}
+  - >-
+    How many bonds lie on the shortest path from atom {idx1} ({atom1})
+    to atom {idx2} ({atom2}) in this molecule? Give the integer only.
+
+    **SMILES:** {smiles}
+  - >-
+    For the molecule below, find the shortest path length in bonds
+    between atom {idx1} ({atom1}) and atom {idx2} ({atom2}).
+
+    **SMILES:** {smiles}
+  - >-
+    Calculate the graph distance (minimum number of edges) between
+    atom {idx1} ({atom1}) and atom {idx2} ({atom2}) in the molecular
+    graph encoded by this SMILES.
+
+    **SMILES:** {smiles}

@@ -3,3 +3,6 @@ ring_counting: "Answer only with the corresponding integer number without any ot
 chain_length: "Answer only with the corresponding integer number without any other information."
 canonicalization: "Answer only with the corresponding SMILES string without any other information."
 fragment_assembly: "Answer only with the corresponding SMILES string without any other information."
+atom_degree: "Answer only with a comma-separated list of integers (no spaces) without any other information."
+stereocenter: "Answer only with the stereocenter assignments in the format Symbol#Index:Label, separated by comma-space, without any other information."
+topological_distance: "Answer only with the corresponding integer number without any other information."

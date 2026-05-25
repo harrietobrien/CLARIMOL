@@ -282,6 +282,9 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         print(f"  {task_name:20s}  acc={r.accuracy:.4f}  ({r.correct}/{r.total})")
         if r.validity > 0:
             print(f"  {'':20s}  validity={r.validity:.4f}")
+        if r.details:
+            for k, v in r.details.items():
+                print(f"  {'':20s}  {k}={v:.4f}" if isinstance(v, float) else f"  {'':20s}  {k}={v}")
         if r.extraction_failures > 0:
             print(f"  {'':20s}  extraction_failures={r.extraction_failures}")
         if r.breakdown and len(r.breakdown) > 1:
@@ -297,6 +300,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
                 "total": r.total,
                 "validity": r.validity,
                 "extraction_failures": r.extraction_failures,
+                "details": r.details,
                 "breakdown": r.breakdown,
             }
             for name, r in results.items()

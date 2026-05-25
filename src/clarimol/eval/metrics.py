@@ -54,6 +54,8 @@ class GenerationResult:
 _YES_NO_RE = re.compile(r"\b(yes|no)\b", re.IGNORECASE)
 _INTEGER_RE = re.compile(r"\b(\d+)\b")
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+_STEREOCENTER_RE = re.compile(r"([A-Z][a-z]?)(\d+)\s*:\s*([RSrs])")
+_DEGREE_SEQ_RE = re.compile(r"\d+(?:\s*,\s*\d+)*")
 
 
 def _strip_thinking(text: str) -> str:
@@ -89,6 +91,34 @@ def _selfies_to_smiles(text: str) -> str:
     except Exception:
         pass
     return text
+
+
+def _parse_stereocenters(text: str) -> set[tuple[str, int, str]]:
+    """Parse stereocenter string into a set of (symbol, index, label) tuples.
+
+    Accepts formats like "C2:R, C5:S" or "C2:R,C5:S" or "C 2 : R, C 5 : S".
+    Returns empty set if no valid centers found.
+    """
+    return {
+        (m.group(1), int(m.group(2)), m.group(3).upper())
+        for m in _STEREOCENTER_RE.finditer(text)
+    }
+
+
+def _extract_degree_sequence(text: str) -> list[int] | None:
+    """Extract a comma-separated integer sequence from model output.
+
+    Returns sorted list of integers, or None if nothing parseable found.
+    Tolerant of whitespace around commas.
+    """
+    text = _strip_thinking(text)
+    m = _DEGREE_SEQ_RE.search(text)
+    if not m:
+        return None
+    try:
+        return sorted(int(x.strip()) for x in m.group(0).split(","))
+    except ValueError:
+        return None
 
 
 def _extract_smiles(text: str) -> str:
@@ -135,6 +165,16 @@ def evaluate_parsing(
     category_correct: dict[str, int] = {}
     category_total: dict[str, int] = {}
 
+    # Stereocenter: track center-level precision/recall for F1
+    sc_center_tp = 0
+    sc_center_pred_total = 0
+    sc_center_ref_total = 0
+    sc_count_correct = 0  # correct number of centers (regardless of labels)
+
+    # Atom degree: track element-wise accuracy as partial credit
+    ad_element_correct = 0
+    ad_element_total = 0
+
     for i, (pred_raw, ref) in enumerate(zip(predictions, references)):
         # Determine category for breakdown
         cat = _get_category(task, ref, metadata[i] if metadata else None)
@@ -146,17 +186,19 @@ def evaluate_parsing(
             pred = _extract_yes_no(pred_raw)
         elif task in ("ring_counting", "chain_length", "topological_distance"):
             pred = _extract_integer(pred_raw)
-        elif task in ("stereocenter", "atom_degree"):
+        elif task == "stereocenter":
+            pred = _strip_thinking(pred_raw).strip()
+        elif task == "atom_degree":
             pred = _strip_thinking(pred_raw).strip()
         else:
             pred = _extract_smiles(pred_raw)
         if pred is None:
             extraction_failures += 1
             continue
+
         # Check correctness
         is_correct = False
         if is_smiles_task:
-            # Canonicalize both for fair comparison
             pred_mol = Chem.MolFromSmiles(pred)
             ref_mol = Chem.MolFromSmiles(ref)
             if pred_mol is not None:
@@ -164,6 +206,34 @@ def evaluate_parsing(
                 pred_can = Chem.MolToSmiles(pred_mol, canonical=True)
                 ref_can = Chem.MolToSmiles(ref_mol, canonical=True) if ref_mol else ref
                 is_correct = pred_can == ref_can
+        elif task == "stereocenter":
+            pred_centers = _parse_stereocenters(pred)
+            ref_centers = _parse_stereocenters(ref)
+            # Set-based exact match (order-independent)
+            is_correct = pred_centers == ref_centers and len(ref_centers) > 0
+            # Center-level stats for F1
+            tp = len(pred_centers & ref_centers)
+            sc_center_tp += tp
+            sc_center_pred_total += len(pred_centers)
+            sc_center_ref_total += len(ref_centers)
+            if len(pred_centers) == len(ref_centers):
+                sc_count_correct += 1
+        elif task == "atom_degree":
+            pred_seq = _extract_degree_sequence(pred)
+            ref_seq = _extract_degree_sequence(ref)
+            if pred_seq is not None and ref_seq is not None:
+                is_correct = pred_seq == ref_seq
+                # Element-wise partial credit (compare sorted sequences)
+                min_len = min(len(pred_seq), len(ref_seq))
+                max_len = max(len(pred_seq), len(ref_seq))
+                if max_len > 0:
+                    matches = sum(
+                        1 for a, b in zip(pred_seq, ref_seq) if a == b
+                    )
+                    ad_element_correct += matches
+                    ad_element_total += max_len
+            elif ref_seq is not None:
+                ad_element_total += len(ref_seq)
         else:
             is_correct = pred.strip().lower() == ref.strip().lower()
 
@@ -185,6 +255,24 @@ def evaluate_parsing(
             "total": ct,
         }
 
+    # Extra details for structured tasks
+    details: dict = {}
+    if task == "stereocenter":
+        sc_precision = sc_center_tp / sc_center_pred_total if sc_center_pred_total > 0 else 0.0
+        sc_recall = sc_center_tp / sc_center_ref_total if sc_center_ref_total > 0 else 0.0
+        sc_f1 = (2 * sc_precision * sc_recall / (sc_precision + sc_recall)
+                 if (sc_precision + sc_recall) > 0 else 0.0)
+        details = {
+            "center_precision": round(sc_precision, 4),
+            "center_recall": round(sc_recall, 4),
+            "center_f1": round(sc_f1, 4),
+            "count_accuracy": round(sc_count_correct / total, 4) if total > 0 else 0.0,
+        }
+    elif task == "atom_degree":
+        details = {
+            "element_accuracy": round(ad_element_correct / ad_element_total, 4) if ad_element_total > 0 else 0.0,
+        }
+
     return ParsingResult(
         task=task,
         accuracy=accuracy,
@@ -192,6 +280,7 @@ def evaluate_parsing(
         correct=correct,
         validity=validity,
         extraction_failures=extraction_failures,
+        details=details,
         breakdown=breakdown,
     )
 
@@ -228,6 +317,27 @@ def _get_category(task: str, reference: str, meta: dict | None) -> str:
             return "long (41-60)"
         else:
             return "very long (60+)"
+    elif task == "stereocenter" and meta:
+        n = meta.get("n_centers", 0)
+        return f"centers={n}"
+    elif task == "atom_degree" and meta:
+        n = meta.get("n_atoms", 0)
+        if n <= 10:
+            return "small (<=10)"
+        elif n <= 20:
+            return "medium (11-20)"
+        elif n <= 30:
+            return "large (21-30)"
+        else:
+            return "very large (30+)"
+    elif task == "topological_distance" and meta:
+        d = meta.get("distance", 0)
+        if d <= 2:
+            return "short (1-2)"
+        elif d <= 5:
+            return "medium (3-5)"
+        else:
+            return "long (6+)"
     return "all"
 
 
