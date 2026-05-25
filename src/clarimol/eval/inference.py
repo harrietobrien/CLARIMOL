@@ -132,6 +132,7 @@ def evaluate_model(
     use_unsloth: bool = True,
     max_samples: int | None = None,
     batch_size: int = 8,
+    save_predictions: str | None = None,
 ) -> dict[str, ParsingResult]:
     """
     Evaluation Pipeline: load model, run inference, compute metrics.
@@ -141,6 +142,7 @@ def evaluate_model(
     :param: use_unsloth: Try Unsloth for faster inference
     :param: max_samples: Cap samples per task (for quick eval)
     :param: batch_size: Inference batch size
+    :param: save_predictions: Path to save per-sample predictions as JSONL
 
     :return: Dict mapping task name to ParsingResult
     """
@@ -149,6 +151,7 @@ def evaluate_model(
     logger.info("Loading test data from %s", data_dir)
     all_samples = load_dataset_from_disk(data_dir)
     results: dict[str, ParsingResult] = {}
+    all_predictions: list[dict] = []
     for task_name, samples in all_samples.items():
         if max_samples:
             samples = samples[:max_samples]
@@ -165,4 +168,23 @@ def evaluate_model(
             "  %s: accuracy=%.4f (%d/%d)",
             task_name, result.accuracy, result.correct, result.total,
         )
+        if save_predictions:
+            for sample, pred, ref in zip(samples, predictions, references):
+                all_predictions.append({
+                    "task": task_name,
+                    "smiles": sample.smiles,
+                    "prediction": pred,
+                    "reference": ref,
+                    "correct": pred.strip().lower() == ref.strip().lower(),
+                    "smiles_length": len(sample.smiles),
+                    "difficulty": sample.difficulty,
+                    "metadata": sample.metadata,
+                })
+    if save_predictions and all_predictions:
+        pred_path = Path(save_predictions)
+        pred_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pred_path, "w") as f:
+            for entry in all_predictions:
+                f.write(json.dumps(entry) + "\n")
+        logger.info("Per-sample predictions saved to %s (%d samples)", pred_path, len(all_predictions))
     return results

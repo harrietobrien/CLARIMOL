@@ -275,6 +275,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         use_unsloth=not args.no_unsloth,
         max_samples=args.max_samples,
         batch_size=args.batch_size,
+        save_predictions=getattr(args, "save_predictions", None),
     )
     # Print summary
     print("\nEvaluation Results")
@@ -370,6 +371,7 @@ def main() -> None:
     p_eval.add_argument("--batch-size", type=int, default=8)
     p_eval.add_argument("--max-samples", type=int, default=None, help="Cap samples per task")
     p_eval.add_argument("--no-unsloth", action="store_true")
+    p_eval.add_argument("--save-predictions", default=None, help="Save per-sample predictions to JSONL")
     # Downstream train
     p_ds_train = sub.add_parser("downstream-train", help="Fine-tune on a downstream task")
     p_ds_train.add_argument("--model", required=True, help="Pre-trained model or base model path")
