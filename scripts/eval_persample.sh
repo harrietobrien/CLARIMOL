@@ -1,13 +1,18 @@
 #!/bin/bash
-#SBATCH --partition=scavenger
-#SBATCH --gres=gpu:1
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=4
+#SBATCH --job-name=cm_persample
+#SBATCH -A scavenger-h200
+#SBATCH -p scavenger-h200
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
 #SBATCH --output=output/logs/persample/persample_%A_%a.log
 #SBATCH --error=output/logs/persample/persample_%A_%a.err
+#SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
 #SBATCH --array=0-4
-#SBATCH --job-name=cm_persample
 
 source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
 conda activate /work/gc237/conda_envs/clarimol
