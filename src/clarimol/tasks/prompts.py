@@ -41,6 +41,11 @@ def _format_instruction(sample: Sample, rng: random.Random) -> str:
         fmt["fg_info"] = f"{fg_name.replace('_', ' ')} ({fg_smarts})"
     elif sample.task == "ring_counting":
         fmt["ring_size"] = str(sample.metadata.get("ring_size", ""))
+    elif sample.task == "topological_distance":
+        fmt["idx1"] = str(sample.metadata.get("idx1", ""))
+        fmt["idx2"] = str(sample.metadata.get("idx2", ""))
+        fmt["atom1"] = sample.metadata.get("atom1", "")
+        fmt["atom2"] = sample.metadata.get("atom2", "")
     return template.format_map(fmt)
 
 
