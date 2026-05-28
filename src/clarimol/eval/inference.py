@@ -169,13 +169,32 @@ def evaluate_model(
             task_name, result.accuracy, result.correct, result.total,
         )
         if save_predictions:
+            from clarimol.eval.metrics import _extract_smiles, _extract_yes_no, _extract_integer
+            from rdkit import Chem
             for sample, pred, ref in zip(samples, predictions, references):
+                is_correct = False
+                if task_name in ("canonicalization", "fragment_assembly"):
+                    pred_s = _extract_smiles(pred)
+                    if pred_s:
+                        pred_mol = Chem.MolFromSmiles(pred_s)
+                        ref_mol = Chem.MolFromSmiles(ref)
+                        if pred_mol and ref_mol:
+                            is_correct = (Chem.MolToSmiles(pred_mol, canonical=True)
+                                          == Chem.MolToSmiles(ref_mol, canonical=True))
+                elif task_name == "functional_group":
+                    extracted = _extract_yes_no(pred)
+                    is_correct = extracted is not None and extracted.lower() == ref.strip().lower()
+                elif task_name in ("ring_counting", "chain_length"):
+                    extracted = _extract_integer(pred)
+                    is_correct = extracted is not None and extracted == ref.strip()
+                else:
+                    is_correct = pred.strip().lower() == ref.strip().lower()
                 all_predictions.append({
                     "task": task_name,
                     "smiles": sample.smiles,
                     "prediction": pred,
                     "reference": ref,
-                    "correct": pred.strip().lower() == ref.strip().lower(),
+                    "correct": is_correct,
                     "smiles_length": len(sample.smiles),
                     "difficulty": sample.difficulty,
                     "metadata": sample.metadata,
