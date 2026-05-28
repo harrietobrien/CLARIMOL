@@ -12,6 +12,8 @@ output/
 
 paper/
 figures/
+*.png
+*.svg
 
 # Any logs
 *.log
