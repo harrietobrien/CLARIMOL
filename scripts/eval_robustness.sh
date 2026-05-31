@@ -13,12 +13,11 @@
 #
 # SMILES robustness evaluation:
 # For each molecule in the test set, generate 5 random non-canonical SMILES
-# (via RDKit randomization), run all 5 parsing tasks on randomized inputs,
-# and measure accuracy drop vs canonical SMILES.
+# (via RDKit randomization), run all 5 parsing tasks on both canonical and
+# randomized inputs, and measure accuracy drop + consistency.
 #
 # Tests whether parsing pre-training makes models robust to SMILES
-# representation choice -- a key practical concern since the same molecule
-# can be written as many different valid SMILES strings.
+# representation choice.
 #
 # Submit: sbatch scripts/eval_robustness.sh
 
@@ -51,10 +50,14 @@ if [ ! -d "$ZINC_MODEL" ]; then
     exit 1
 fi
 
-# Step 1: Generate randomized SMILES test sets
-if [ ! -f "$OUT_DIR/randomized_data.flag" ]; then
-    echo "=== Generating randomized SMILES variants ==="
-    python3 << PYEOF
+# Clear stale results from previous failed run
+rm -f "$OUT_DIR/robustness_results.json" "$OUT_DIR/robustness_base_results.json"
+rm -f "$OUT_DIR/randomized_data.flag"
+rm -f "$OUT_DIR"/canonical_*.json "$OUT_DIR"/randomized_*.json
+
+# Step 1: Generate randomized SMILES test sets using actual test data format
+echo "=== Generating randomized SMILES variants ==="
+python3 << 'PYEOF'
 import json
 import os
 import random
@@ -63,8 +66,8 @@ from rdkit import Chem
 random.seed(42)
 out_dir = "output/robustness"
 test_dir = "data/test"
-n_random = $N_RANDOM
-max_molecules = $MAX_MOLECULES
+n_random = 5
+max_molecules = 2000
 
 tasks = [
     "functional_group", "ring_counting", "chain_length",
@@ -72,7 +75,6 @@ tasks = [
 ]
 
 def randomize_smiles(mol, n=5):
-    """Generate n random SMILES strings for a molecule."""
     results = []
     for _ in range(n * 10):
         if len(results) >= n:
@@ -94,7 +96,6 @@ for task in tasks:
     with open(task_file) as f:
         samples = json.load(f)
 
-    # Subsample for tractability
     if len(samples) > max_molecules:
         samples = random.sample(samples, max_molecules)
 
@@ -103,26 +104,11 @@ for task in tasks:
     n_skipped = 0
 
     for sample in samples:
-        # Extract SMILES from the instruction text
-        instruction = sample.get("instruction", sample.get("input", ""))
-        output = sample.get("output", sample.get("response", ""))
-
-        # Find SMILES in instruction (typically after "SMILES:" or similar)
-        smiles = None
-        for line in instruction.split("\n"):
-            line = line.strip()
-            if "SMILES" in line.upper() and ":" in line:
-                smiles = line.split(":", 1)[1].strip()
-                break
-
-        if not smiles:
-            # Try extracting directly if instruction contains SMILES
-            tokens = instruction.split()
-            for tok in tokens:
-                mol_check = Chem.MolFromSmiles(tok)
-                if mol_check and len(tok) > 5:
-                    smiles = tok
-                    break
+        smiles = sample.get("smiles", "")
+        question = sample.get("question", "")
+        answer = sample.get("answer", "")
+        task_name = sample.get("task", task)
+        metadata = sample.get("metadata", {})
 
         if not smiles:
             n_skipped += 1
@@ -140,37 +126,35 @@ for task in tasks:
             n_skipped += 1
             continue
 
-        # Keep canonical version
+        mol_id = len(canonical_samples)
+
         canonical_samples.append({
-            "instruction": instruction,
-            "output": output,
             "smiles": canonical,
-            "molecule_id": len(canonical_samples),
+            "question": question,
+            "answer": answer,
+            "task": task_name,
+            "metadata": metadata,
+            "molecule_id": mol_id,
         })
 
-        # Create randomized versions
         for i, rsmi in enumerate(randoms):
-            randomized_instruction = instruction.replace(smiles, rsmi)
-            if canonical in randomized_instruction:
-                randomized_instruction = randomized_instruction.replace(canonical, rsmi)
             randomized_samples.append({
-                "instruction": randomized_instruction,
-                "output": output,
                 "smiles": rsmi,
-                "canonical_smiles": canonical,
-                "molecule_id": len(canonical_samples) - 1,
+                "question": question,
+                "answer": answer,
+                "task": task_name,
+                "metadata": metadata,
+                "molecule_id": mol_id,
                 "variant_id": i,
             })
 
-    # Save canonical test set
     canon_path = os.path.join(out_dir, f"canonical_{task}.json")
     with open(canon_path, "w") as f:
-        json.dump(canonical_samples, f, indent=2)
+        json.dump(canonical_samples, f)
 
-    # Save randomized test set
     rand_path = os.path.join(out_dir, f"randomized_{task}.json")
     with open(rand_path, "w") as f:
-        json.dump(randomized_samples, f, indent=2)
+        json.dump(randomized_samples, f)
 
     print(f"  {task}: {len(canonical_samples)} canonical, "
           f"{len(randomized_samples)} randomized ({n_skipped} skipped)")
@@ -178,26 +162,21 @@ for task in tasks:
 print("Randomized data generation complete.")
 PYEOF
 
-    if [ $? -eq 0 ]; then
-        touch "$OUT_DIR/randomized_data.flag"
-    else
-        echo "ERROR: randomized data generation failed"
-        exit 1
-    fi
-else
-    echo "SKIP: randomized data already generated"
-fi
+echo "=== Data generation done ==="
 
 # Step 2: Evaluate ZINC-trained model on canonical + randomized inputs
-if [ ! -f "$OUT_DIR/robustness_results.json" ]; then
-    echo "=== Evaluating robustness ==="
-    python3 << 'PYEOF'
+echo "=== Evaluating ZINC-trained model ==="
+python3 << 'PYEOF'
 import json
 import os
 import sys
+import random
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
+
+sys.path.insert(0, ".")
+from src.clarimol.tasks.prompts import build_messages
 
 out_dir = "output/robustness"
 zinc_model = "output/multi_seed/llama-8b/seed_42/final"
@@ -208,7 +187,7 @@ tasks = [
     "canonicalization", "fragment_assembly",
 ]
 
-print("Loading model...")
+print("Loading ZINC-trained model...")
 tokenizer = AutoTokenizer.from_pretrained(base_model)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
@@ -219,48 +198,60 @@ model = AutoModelForCausalLM.from_pretrained(
 model = PeftModel.from_pretrained(model, zinc_model)
 model.eval()
 
-BATCH_SIZE = 16
+rng = random.Random(42)
 
 def evaluate_samples(samples, tokenizer, model):
-    """Evaluate a list of instruction/output samples and return per-sample correctness."""
     results = []
-    for i in range(0, len(samples), BATCH_SIZE):
-        batch = samples[i:i+BATCH_SIZE]
-        for sample in batch:
-            instruction = sample["instruction"]
-            expected = sample["output"].strip().lower()
+    for i, sample in enumerate(samples):
+        messages = build_messages(sample, rng=rng, use_system_prompt=True)
+        messages_no_answer = [m for m in messages if m["role"] != "assistant"]
 
-            messages = [{"role": "user", "content": instruction}]
-            chat_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages_no_answer, tokenize=False, add_generation_prompt=True
             )
-            inputs = tokenizer(
-                chat_text, return_tensors="pt", truncation=True, max_length=512
+        except Exception:
+            prompt = "\n".join(
+                f"<|{m['role']}|>\n{m['content']}" for m in messages_no_answer
+            ) + "\n<|assistant|>\n"
+
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs, max_new_tokens=128, do_sample=False,
+                temperature=None, top_p=None,
             )
-            inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs, max_new_tokens=128, do_sample=False,
-                    temperature=None, top_p=None,
-                )
+        response = tokenizer.decode(
+            outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+        ).strip()
 
-            response = tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-            ).strip().lower()
+        expected = sample["answer"].strip()
+        correct = response.lower() == expected.lower() or expected.lower() in response.lower()
 
-            correct = response == expected or expected in response
-            results.append({
-                "correct": correct,
-                "molecule_id": sample.get("molecule_id"),
-                "variant_id": sample.get("variant_id"),
-            })
+        results.append({
+            "correct": correct,
+            "molecule_id": sample.get("molecule_id"),
+            "variant_id": sample.get("variant_id"),
+        })
 
-        if (i + BATCH_SIZE) % 200 == 0:
-            print(f"    processed {min(i + BATCH_SIZE, len(samples))}/{len(samples)}")
+        if (i + 1) % 500 == 0:
+            print(f"    processed {i+1}/{len(samples)}")
 
     return results
 
+
+# Need Sample-like objects for build_messages
+class SampleLike:
+    def __init__(self, d):
+        self.smiles = d["smiles"]
+        self.task = d["task"]
+        self.question = d["question"]
+        self.answer = d["answer"]
+        self.metadata = d.get("metadata", {})
+        self.difficulty = d.get("difficulty", 0)
 
 all_results = {}
 for task in tasks:
@@ -272,21 +263,25 @@ for task in tasks:
         continue
 
     with open(canon_path) as f:
-        canonical = json.load(f)
+        canonical_raw = json.load(f)
     with open(rand_path) as f:
-        randomized = json.load(f)
+        randomized_raw = json.load(f)
+
+    if not canonical_raw:
+        print(f"  {task}: no canonical samples, skipping")
+        continue
+
+    canonical = [SampleLike(s) for s in canonical_raw]
+    randomized = [SampleLike(s) for s in randomized_raw]
 
     print(f"  {task}: evaluating {len(canonical)} canonical + {len(randomized)} randomized...")
 
-    # Evaluate canonical
     canon_results = evaluate_samples(canonical, tokenizer, model)
-    canon_acc = sum(r["correct"] for r in canon_results) / len(canon_results) if canon_results else 0.0
+    canon_acc = sum(r["correct"] for r in canon_results) / len(canon_results)
 
-    # Evaluate randomized
     rand_results = evaluate_samples(randomized, tokenizer, model)
-    rand_acc = sum(r["correct"] for r in rand_results) / len(rand_results) if rand_results else 0.0
+    rand_acc = sum(r["correct"] for r in rand_results) / len(rand_results)
 
-    # Per-molecule consistency: fraction of molecules where ALL variants are correct
     mol_ids = set(r["molecule_id"] for r in rand_results if r["molecule_id"] is not None)
     consistent = 0
     any_correct = 0
@@ -300,11 +295,11 @@ for task in tasks:
     any_correct_rate = any_correct / len(mol_ids) if mol_ids else 0.0
 
     all_results[task] = {
-        "canonical_accuracy": canon_acc,
-        "randomized_accuracy": rand_acc,
-        "accuracy_drop": canon_acc - rand_acc,
-        "consistency_rate": consistency_rate,
-        "any_correct_rate": any_correct_rate,
+        "canonical_accuracy": round(canon_acc, 4),
+        "randomized_accuracy": round(rand_acc, 4),
+        "accuracy_drop": round(canon_acc - rand_acc, 4),
+        "consistency_rate": round(consistency_rate, 4),
+        "any_correct_rate": round(any_correct_rate, 4),
         "n_canonical": len(canonical),
         "n_randomized": len(randomized),
         "n_molecules": len(mol_ids),
@@ -313,27 +308,25 @@ for task in tasks:
     print(f"    canonical:   {canon_acc:.4f}")
     print(f"    randomized:  {rand_acc:.4f}")
     print(f"    drop:        {canon_acc - rand_acc:+.4f}")
-    print(f"    consistency: {consistency_rate:.4f} (all variants correct)")
-    print(f"    any_correct: {any_correct_rate:.4f}")
+    print(f"    consistency: {consistency_rate:.4f}")
 
-# Save full results
-output_path = os.path.join(out_dir, "robustness_results.json")
-with open(output_path, "w") as f:
+with open(os.path.join(out_dir, "robustness_results.json"), "w") as f:
     json.dump(all_results, f, indent=2)
-print(f"\nResults saved to {output_path}")
+print(f"\nZINC-trained results saved.")
 PYEOF
-else
-    echo "SKIP: robustness results already exist"
-fi
 
-# Step 3: Also evaluate base model for comparison
-if [ ! -f "$OUT_DIR/robustness_base_results.json" ]; then
-    echo "=== Evaluating base LLaMA robustness (no LoRA) ==="
-    python3 << 'PYEOF'
+# Step 3: Evaluate base model for comparison
+echo "=== Evaluating base LLaMA (no LoRA) ==="
+python3 << 'PYEOF'
 import json
 import os
+import sys
+import random
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+sys.path.insert(0, ".")
+from src.clarimol.tasks.prompts import build_messages
 
 out_dir = "output/robustness"
 base_model = "meta-llama/Llama-3.1-8B-Instruct"
@@ -352,6 +345,17 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model.eval()
 
+rng = random.Random(42)
+
+class SampleLike:
+    def __init__(self, d):
+        self.smiles = d["smiles"]
+        self.task = d["task"]
+        self.question = d["question"]
+        self.answer = d["answer"]
+        self.metadata = d.get("metadata", {})
+        self.difficulty = d.get("difficulty", 0)
+
 all_results = {}
 for task in tasks:
     canon_path = os.path.join(out_dir, f"canonical_{task}.json")
@@ -361,20 +365,29 @@ for task in tasks:
         continue
 
     with open(canon_path) as f:
-        canonical = json.load(f)
+        canonical = [SampleLike(s) for s in json.load(f)]
     with open(rand_path) as f:
-        randomized = json.load(f)
+        randomized = [SampleLike(s) for s in json.load(f)]
+
+    if not canonical:
+        continue
 
     print(f"  {task}: {len(canonical)} canonical + {len(randomized)} randomized...")
 
-    def eval_batch(samples):
+    def eval_samples(samples):
         correct = 0
-        for sample in samples:
-            messages = [{"role": "user", "content": sample["instruction"]}]
-            chat_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            inputs = tokenizer(chat_text, return_tensors="pt", truncation=True, max_length=512)
+        for i, sample in enumerate(samples):
+            messages = build_messages(sample, rng=rng, use_system_prompt=True)
+            messages_no_answer = [m for m in messages if m["role"] != "assistant"]
+            try:
+                prompt = tokenizer.apply_chat_template(
+                    messages_no_answer, tokenize=False, add_generation_prompt=True
+                )
+            except Exception:
+                prompt = "\n".join(
+                    f"<|{m['role']}|>\n{m['content']}" for m in messages_no_answer
+                ) + "\n<|assistant|>\n"
+            inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
             inputs = {k: v.to(model.device) for k, v in inputs.items()}
             with torch.no_grad():
                 outputs = model.generate(
@@ -383,30 +396,28 @@ for task in tasks:
                 )
             response = tokenizer.decode(
                 outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-            ).strip().lower()
-            expected = sample["output"].strip().lower()
-            if response == expected or expected in response:
+            ).strip()
+            expected = sample.answer.strip()
+            if response.lower() == expected.lower() or expected.lower() in response.lower():
                 correct += 1
+            if (i + 1) % 500 == 0:
+                print(f"    processed {i+1}/{len(samples)}")
         return correct / len(samples) if samples else 0.0
 
-    canon_acc = eval_batch(canonical)
-    rand_acc = eval_batch(randomized)
+    canon_acc = eval_samples(canonical)
+    rand_acc = eval_samples(randomized)
 
     all_results[task] = {
-        "canonical_accuracy": canon_acc,
-        "randomized_accuracy": rand_acc,
-        "accuracy_drop": canon_acc - rand_acc,
+        "canonical_accuracy": round(canon_acc, 4),
+        "randomized_accuracy": round(rand_acc, 4),
+        "accuracy_drop": round(canon_acc - rand_acc, 4),
     }
     print(f"    canonical: {canon_acc:.4f}, randomized: {rand_acc:.4f}, drop: {canon_acc - rand_acc:+.4f}")
 
-output_path = os.path.join(out_dir, "robustness_base_results.json")
-with open(output_path, "w") as f:
+with open(os.path.join(out_dir, "robustness_base_results.json"), "w") as f:
     json.dump(all_results, f, indent=2)
-print(f"Base results saved to {output_path}")
+print("Base results saved.")
 PYEOF
-else
-    echo "SKIP: base robustness results already exist"
-fi
 
 # Step 4: Print comparison
 echo ""
