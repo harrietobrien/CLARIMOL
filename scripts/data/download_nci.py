@@ -16,11 +16,10 @@ logger = logging.getLogger(__name__)
 # The NCI CACTUS server provides bulk downloads of the ~250K compound screening set.
 # https://cactus.nci.nih.gov/download/nci/
 NCI_URLS = [
-    # Tab-separated: NSC_number<tab>SMILES
-    "https://cactus.nci.nih.gov/download/nci/NCI-Open_2012-05-01.smi.gz",
-    "https://cactus.nci.nih.gov/download/nci/NCI-Open_2012-05-01.smi",
-    # Older format
-    "https://cactus.nci.nih.gov/download/nci/nci.smi.gz",
+    # Release 4 (May 2012) SDF — 265,242 structures. The .smi files are no longer hosted.
+    "https://cactus.nci.nih.gov/download/nci/NCI-Open_2012-05-01.sdf.gz",
+    # Release 3 (Sep 2003) SDF fallback — 260,071 structures.
+    "https://cactus.nci.nih.gov/download/nci/NCI-Open_09-03.sdf.gz",
 ]
 
 OUTPUT_FILENAME = "nci.smi"
@@ -40,51 +39,63 @@ def download_file(url: str, dest: str) -> bool:
 
 
 def extract_and_validate(input_path: str, output_path: str) -> int:
-    """Read SMILES from NCI file, validate with RDKit, write valid ones.
+    """Read structures from NCI SDF or SMILES file, validate with RDKit, write valid SMILES.
 
-    NCI files typically have format: SMILES<tab>NSC_ID or NSC_ID<tab>SMILES.
+    Handles both .sdf/.sdf.gz (SDF format) and .smi/.smi.gz (tab-delimited SMILES).
     Returns count of valid SMILES written.
     """
     from rdkit import Chem, RDLogger
 
     RDLogger.DisableLog("rdApp.*")
 
-    is_gz = input_path.endswith(".gz")
-    open_fn = gzip.open if is_gz else open
-
     valid_count = 0
     total = 0
 
+    is_sdf = ".sdf" in input_path
+
     with open(output_path, "w") as out:
-        with open_fn(input_path, "rt", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-
-                parts = line.split("\t")
-                if len(parts) < 1:
-                    continue
-
-                # The SMILES could be in the first or second column.
-                # Try the first token; if it looks numeric, use the second.
-                smi_candidate = parts[0].strip()
-                if smi_candidate.isdigit() and len(parts) > 1:
-                    smi_candidate = parts[1].strip()
-
-                # Skip if the candidate looks like an ID (pure digits)
-                if smi_candidate.isdigit():
-                    continue
-
-                total += 1
-                mol = Chem.MolFromSmiles(smi_candidate)
-                if mol is not None:
-                    canonical = Chem.MolToSmiles(mol)
-                    out.write(canonical + "\n")
-                    valid_count += 1
-
-                if total % 50_000 == 0:
-                    logger.info("Processed %d entries, %d valid so far", total, valid_count)
+        if is_sdf:
+            # SDF format: decompress if needed, then use ForwardSDMolSupplier
+            is_gz = input_path.endswith(".gz")
+            fh = gzip.open(input_path, "rb") if is_gz else open(input_path, "rb")
+            try:
+                suppl = Chem.ForwardSDMolSupplier(fh, sanitize=True, removeHs=True)
+                for mol in suppl:
+                    total += 1
+                    if mol is not None:
+                        canonical = Chem.MolToSmiles(mol)
+                        if canonical:
+                            out.write(canonical + "\n")
+                            valid_count += 1
+                    if total % 50_000 == 0:
+                        logger.info("Processed %d entries, %d valid so far", total, valid_count)
+            finally:
+                fh.close()
+        else:
+            # Tab-delimited SMILES format
+            is_gz = input_path.endswith(".gz")
+            open_fn = gzip.open if is_gz else open
+            with open_fn(input_path, "rt", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) < 1:
+                        continue
+                    smi_candidate = parts[0].strip()
+                    if smi_candidate.isdigit() and len(parts) > 1:
+                        smi_candidate = parts[1].strip()
+                    if smi_candidate.isdigit():
+                        continue
+                    total += 1
+                    mol = Chem.MolFromSmiles(smi_candidate)
+                    if mol is not None:
+                        canonical = Chem.MolToSmiles(mol)
+                        out.write(canonical + "\n")
+                        valid_count += 1
+                    if total % 50_000 == 0:
+                        logger.info("Processed %d entries, %d valid so far", total, valid_count)
 
     logger.info(
         "Validation complete: %d / %d valid (%.1f%%)",
@@ -121,8 +132,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         raw_path = None
         for url in NCI_URLS:
-            suffix = ".gz" if url.endswith(".gz") else ".smi"
-            tmp_file = os.path.join(tmpdir, "nci_raw" + suffix)
+            # Preserve the original filename suffix for format detection
+            basename = url.rsplit("/", 1)[-1]
+            tmp_file = os.path.join(tmpdir, basename)
             if download_file(url, tmp_file):
                 raw_path = tmp_file
                 break

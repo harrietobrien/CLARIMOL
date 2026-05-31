@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
 import logging
 import os
 import shutil
 import tempfile
 import urllib.request
+import zipfile
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,12 @@ logger = logging.getLogger(__name__)
 # Primary: the official download page at coconut.naturalproducts.net
 # Fallback: Zenodo archive of COCONUT SMILES dumps.
 COCONUT_URLS = [
+    # COCONUT 2.0 CSV lite contains SMILES column. Updated monthly at coconut.s3.uni-jena.de.
+    "https://coconut.s3.uni-jena.de/prod/downloads/2026-05/coconut_csv_lite-05-2026.zip",
+    "https://coconut.s3.uni-jena.de/prod/downloads/2026-04/coconut_csv_lite-04-2026.zip",
+    "https://coconut.s3.uni-jena.de/prod/downloads/2026-03/coconut_csv_lite-03-2026.zip",
+    # Older direct SMILES endpoint (may no longer work)
     "https://coconut.naturalproducts.net/download/smiles",
-    "https://zenodo.org/records/13904699/files/coconut_smiles.smi.gz",
-    "https://zenodo.org/records/13904699/files/COCONUT_DB.smi.gz",
 ]
 
 OUTPUT_FILENAME = "coconut.smi"
@@ -37,8 +42,69 @@ def download_file(url: str, dest: str) -> bool:
         return False
 
 
+def extract_smiles_from_csv_zip(zip_path: str, output_path: str) -> int:
+    """Extract SMILES from a COCONUT CSV ZIP archive, validate with RDKit.
+
+    The COCONUT CSV lite files contain a 'canonical_smiles' or 'smiles' column.
+    Returns count of valid SMILES written.
+    """
+    from rdkit import Chem, RDLogger
+
+    RDLogger.DisableLog("rdApp.*")
+
+    valid_count = 0
+    total = 0
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        csv_files = [n for n in zf.namelist() if n.endswith(".csv")]
+        if not csv_files:
+            logger.error("No CSV files found in ZIP archive.")
+            return 0
+
+        with open(output_path, "w") as out:
+            for csv_name in csv_files:
+                logger.info("Processing %s from archive.", csv_name)
+                with zf.open(csv_name) as raw:
+                    reader = csv.DictReader(
+                        (line.decode("utf-8", errors="replace") for line in raw)
+                    )
+                    # Find the SMILES column
+                    smiles_col = None
+                    for candidate in ["canonical_smiles", "smiles", "SMILES", "Canonical_SMILES"]:
+                        if candidate in (reader.fieldnames or []):
+                            smiles_col = candidate
+                            break
+                    if smiles_col is None:
+                        logger.warning(
+                            "No SMILES column found in %s. Columns: %s",
+                            csv_name,
+                            reader.fieldnames,
+                        )
+                        continue
+
+                    for row in reader:
+                        smi = (row.get(smiles_col) or "").strip()
+                        if not smi:
+                            continue
+                        total += 1
+                        mol = Chem.MolFromSmiles(smi)
+                        if mol is not None:
+                            out.write(smi + "\n")
+                            valid_count += 1
+                        if total % 100_000 == 0:
+                            logger.info("Processed %d SMILES, %d valid so far", total, valid_count)
+
+    logger.info(
+        "Validation complete: %d / %d SMILES valid (%.1f%%)",
+        valid_count,
+        total,
+        100.0 * valid_count / max(total, 1),
+    )
+    return valid_count
+
+
 def validate_and_write(input_path: str, output_path: str) -> int:
-    """Read SMILES from input_path, validate with RDKit, write valid ones to output_path.
+    """Read SMILES from a plain text file, validate with RDKit, write valid ones.
 
     Returns count of valid SMILES written.
     """
@@ -56,7 +122,6 @@ def validate_and_write(input_path: str, output_path: str) -> int:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                # SMILES may be the first whitespace-delimited token
                 smi = line.split()[0]
                 total += 1
                 mol = Chem.MolFromSmiles(smi)
@@ -101,10 +166,14 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         raw_path = None
         for url in COCONUT_URLS:
-            suffix = ".gz" if url.endswith(".gz") else ".smi"
+            if url.endswith(".zip"):
+                suffix = ".zip"
+            elif url.endswith(".gz"):
+                suffix = ".gz"
+            else:
+                suffix = ".smi"
             tmp_file = os.path.join(tmpdir, "coconut_raw" + suffix)
             if download_file(url, tmp_file):
-                # Check the downloaded file has content
                 if os.path.getsize(tmp_file) > 1000:
                     raw_path = tmp_file
                     break
@@ -119,9 +188,14 @@ def main() -> None:
             )
             raise SystemExit(1)
 
-        count = validate_and_write(raw_path, output_path)
+        if raw_path.endswith(".zip"):
+            count = extract_smiles_from_csv_zip(raw_path, output_path)
+        else:
+            count = validate_and_write(raw_path, output_path)
+
         if count == 0:
-            os.remove(output_path)
+            if os.path.exists(output_path):
+                os.remove(output_path)
             logger.error("No valid SMILES extracted. The download format may have changed.")
             raise SystemExit(1)
 
