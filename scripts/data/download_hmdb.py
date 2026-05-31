@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 
 # HMDB bulk SDF download. Contains ~220K metabolite structures.
 # https://hmdb.ca/downloads — "All Metabolite Structures (SDF)"
+# NOTE: hmdb.ca is behind Cloudflare challenge protection as of 2026.
+# Programmatic download will fail with HTTP 403.
+# Manual download required: visit https://hmdb.ca/downloads in a browser,
+# download "All Metabolite Structures (SDF)", save as structures.zip,
+# then place it at data/sources/hmdb_structures.zip and re-run this script.
 HMDB_SDF_URL = "https://hmdb.ca/system/downloads/current/structures.zip"
+MANUAL_ZIP_PATH = "data/sources/hmdb_structures.zip"
 
 OUTPUT_FILENAME = "hmdb.smi"
 
@@ -85,22 +91,40 @@ def main() -> None:
         logger.info("Output file already exists: %s — skipping download.", output_path)
         return
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        zip_path = os.path.join(tmpdir, "structures.zip")
+    # Check for manually downloaded ZIP first
+    manual_path = os.path.join(os.getcwd(), MANUAL_ZIP_PATH)
+    if os.path.exists(manual_path):
+        logger.info("Found manually downloaded ZIP at %s", manual_path)
 
-        logger.info("Downloading HMDB structures from %s", HMDB_SDF_URL)
-        logger.info("This file is ~500 MB; download may take several minutes.")
-        try:
-            req = urllib.request.Request(HMDB_SDF_URL, headers={"User-Agent": "CLARIMOL/1.0"})
-            with urllib.request.urlopen(req, timeout=1800) as resp, open(zip_path, "wb") as f:
-                shutil.copyfileobj(resp, f, length=1 << 20)
-        except Exception as e:
-            logger.error(
-                "HMDB download failed: %s. Manually download from %s",
-                e,
-                HMDB_SDF_URL,
-            )
-            raise SystemExit(1)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if os.path.exists(manual_path):
+            zip_path = manual_path
+        else:
+            zip_path = os.path.join(tmpdir, "structures.zip")
+            logger.info("Downloading HMDB structures from %s", HMDB_SDF_URL)
+            logger.info("This file is ~500 MB; download may take several minutes.")
+            try:
+                req = urllib.request.Request(
+                    HMDB_SDF_URL,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=1800) as resp, open(zip_path, "wb") as f:
+                    shutil.copyfileobj(resp, f, length=1 << 20)
+            except Exception as e:
+                logger.error(
+                    "HMDB download failed (Cloudflare protection): %s\n"
+                    "Manual download required:\n"
+                    "  1. Visit https://hmdb.ca/downloads in a browser\n"
+                    "  2. Download 'All Metabolite Structures (SDF)'\n"
+                    "  3. Save as %s\n"
+                    "  4. Re-run this script",
+                    e,
+                    manual_path,
+                )
+                raise SystemExit(1)
 
         logger.info("Download complete: %d MB", os.path.getsize(zip_path) // (1 << 20))
 
