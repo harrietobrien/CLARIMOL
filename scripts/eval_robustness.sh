@@ -228,13 +228,13 @@ def evaluate_samples(samples, tokenizer, model):
             outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
         ).strip()
 
-        expected = sample["answer"].strip()
+        expected = sample.answer.strip()
         correct = response.lower() == expected.lower() or expected.lower() in response.lower()
 
         results.append({
             "correct": correct,
-            "molecule_id": sample.get("molecule_id"),
-            "variant_id": sample.get("variant_id"),
+            "molecule_id": getattr(sample, "molecule_id", None),
+            "variant_id": getattr(sample, "variant_id", None),
         })
 
         if (i + 1) % 500 == 0:
@@ -252,6 +252,8 @@ class SampleLike:
         self.answer = d["answer"]
         self.metadata = d.get("metadata", {})
         self.difficulty = d.get("difficulty", 0)
+        self.molecule_id = d.get("molecule_id")
+        self.variant_id = d.get("variant_id")
 
 all_results = {}
 for task in tasks:
@@ -355,6 +357,8 @@ class SampleLike:
         self.answer = d["answer"]
         self.metadata = d.get("metadata", {})
         self.difficulty = d.get("difficulty", 0)
+        self.molecule_id = d.get("molecule_id")
+        self.variant_id = d.get("variant_id")
 
 all_results = {}
 for task in tasks:
