@@ -11,11 +11,12 @@
 #SBATCH --output=output/logs/domain_transfer/pubchem_%j.log
 #SBATCH --error=output/logs/domain_transfer/pubchem_%j.err
 #
-# Domain transfer: PubChem 1M subsample
-# 1. Prepare PubChem SMILES into 5-task parsing format
-# 2. Train LLaMA on PubChem data
-# 3. Eval PubChem-trained model on PubChem test + ZINC test (bidirectional)
-# 4. Eval ZINC-trained model on PubChem test (zero-shot transfer)
+# Domain transfer: PubChem (subsampled to 250K from 1M pool)
+# 1. Pre-filter 1M SMILES to 300K at the bash level (avoids RDKit on full 1M)
+# 2. Prepare PubChem SMILES into 5-task parsing format from the subset
+# 3. Train LLaMA on PubChem data
+# 4. Eval PubChem-trained model on PubChem test + ZINC test (bidirectional)
+# 5. Eval ZINC-trained model on PubChem test (zero-shot transfer)
 #
 # Prereq: data/sources/pubchem.smi must exist (one SMILES per line)
 # Submit: sbatch scripts/train_domain_pubchem.sh
@@ -31,11 +32,12 @@ export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token 2>/dev/null || cat ~/
 source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
 conda activate /work/gc237/conda_envs/clarimol
 
-echo "=== Domain Transfer: PubChem 1M Subsample ==="
+echo "=== Domain Transfer: PubChem (250K subsample) ==="
 nvidia-smi
 echo "Start: $(date)"
 
 SMILES_FILE="data/sources/pubchem.smi"
+SUBSET_FILE="data/sources/pubchem_subset.smi"
 TRAIN_DATA="data/pubchem_train"
 TEST_DATA="data/pubchem_test"
 OUT_DIR="output/domain_transfer/pubchem"
@@ -46,14 +48,26 @@ if [ ! -f "$SMILES_FILE" ]; then
     exit 1
 fi
 
-# Step 1: Prepare PubChem training data (50K samples per task from 1M pool)
+# Step 0: Pre-filter 1M SMILES to 300K random lines at the bash level.
+# This avoids running RDKit validation on the full 1M file, which consumed
+# the entire 24h wall clock in previous runs. 300K provides enough headroom
+# for the 50K train + 10K test after RDKit filtering drops invalid SMILES.
+if [ ! -f "$SUBSET_FILE" ]; then
+    echo "=== Pre-filtering: shuf -n 300000 from $(wc -l < "$SMILES_FILE") SMILES ==="
+    shuf -n 300000 --random-source=<(openssl enc -aes-256-ctr -pass pass:42 -nosalt </dev/zero 2>/dev/null) "$SMILES_FILE" > "$SUBSET_FILE"
+    echo "Subset created: $(wc -l < "$SUBSET_FILE") lines"
+else
+    echo "SKIP: PubChem subset exists ($(wc -l < "$SUBSET_FILE") lines)"
+fi
+
+# Step 1: Prepare PubChem training data (50K samples per task from 300K pool)
 if [ ! -f "$TRAIN_DATA/functional_group.json" ]; then
     echo "=== Preparing PubChem training data ==="
     python -m clarimol prepare \
         --source file \
-        --smiles-file "$SMILES_FILE" \
+        --smiles-file "$SUBSET_FILE" \
         --output-dir "$TRAIN_DATA" \
-        --max-molecules 1000000 \
+        --max-molecules 60000 \
         --keep-n 50000 \
         --subsample random \
         --no-curriculum \
@@ -67,9 +81,9 @@ if [ ! -f "$TEST_DATA/functional_group.json" ]; then
     echo "=== Preparing PubChem test data ==="
     python -m clarimol prepare \
         --source file \
-        --smiles-file "$SMILES_FILE" \
+        --smiles-file "$SUBSET_FILE" \
         --output-dir "$TEST_DATA" \
-        --max-molecules 1000000 \
+        --max-molecules 80000 \
         --keep-n 10000 \
         --subsample random \
         --no-curriculum \

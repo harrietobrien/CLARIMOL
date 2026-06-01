@@ -87,6 +87,46 @@ def randomize_smiles(mol, n=5):
             continue
     return results
 
+
+def canonicalize_fragment_smiles(smiles_str):
+    """Canonicalize a dot-separated fragment SMILES by processing each fragment independently."""
+    parts = smiles_str.split(" . ")
+    canon_parts = []
+    for part in parts:
+        mol = Chem.MolFromSmiles(part)
+        if mol is not None:
+            canon_parts.append(Chem.MolToSmiles(mol, canonical=True))
+        else:
+            canon_parts.append(part)
+    return " . ".join(canon_parts)
+
+
+def randomize_fragment_smiles(smiles_str, n=5):
+    """Generate n random SMILES for a dot-separated fragment string."""
+    parts = smiles_str.split(" . ")
+    mols = []
+    for part in parts:
+        mol = Chem.MolFromSmiles(part)
+        if mol is None:
+            return []
+        mols.append(mol)
+
+    results = []
+    for _ in range(n * 10):
+        if len(results) >= n:
+            break
+        try:
+            rand_parts = []
+            for mol in mols:
+                rand_parts.append(Chem.MolToSmiles(mol, doRandom=True, canonical=False))
+            combined = " . ".join(rand_parts)
+            if combined not in results:
+                results.append(combined)
+        except Exception:
+            continue
+    return results
+
+
 for task in tasks:
     task_file = os.path.join(test_dir, f"{task}.json")
     if not os.path.exists(task_file):
@@ -102,6 +142,7 @@ for task in tasks:
     canonical_samples = []
     randomized_samples = []
     n_skipped = 0
+    is_fragment = (task == "fragment_assembly")
 
     for sample in samples:
         smiles = sample.get("smiles", "")
@@ -114,13 +155,16 @@ for task in tasks:
             n_skipped += 1
             continue
 
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            n_skipped += 1
-            continue
-
-        canonical = Chem.MolToSmiles(mol, canonical=True)
-        randoms = randomize_smiles(mol, n=n_random)
+        if is_fragment:
+            canonical = canonicalize_fragment_smiles(smiles)
+            randoms = randomize_fragment_smiles(smiles, n=n_random)
+        else:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                n_skipped += 1
+                continue
+            canonical = Chem.MolToSmiles(mol, canonical=True)
+            randoms = randomize_smiles(mol, n=n_random)
 
         if len(randoms) < 1:
             n_skipped += 1
