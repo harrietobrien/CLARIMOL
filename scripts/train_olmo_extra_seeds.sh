@@ -33,7 +33,7 @@ echo "=== OLMo-7B Extra Seeds (7, 99) ==="
 nvidia-smi
 echo "Start: $(date)"
 
-MODEL_ID="allenai/OLMo-7B-Instruct"
+MODEL_ID="allenai/OLMo-3-7B-Instruct"
 MODEL_NAME="olmo-7b"
 SEEDS=(7 99)
 
