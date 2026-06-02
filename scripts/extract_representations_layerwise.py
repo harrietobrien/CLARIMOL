@@ -154,8 +154,15 @@ def extract_layerwise(
 
     def make_hook(layer_idx: int):
         def hook(module, input, output):
-            # output is a tuple; first element is the hidden state tensor
-            activations[layer_idx] = output[0][:, -1, :].detach().cpu().float().numpy()
+            # output may be a tuple or a single tensor depending on model config
+            hidden = output[0] if isinstance(output, tuple) else output
+            # hidden is either (batch, seq, dim) or (seq, dim) if batch was squeezed
+            if hidden.dim() == 3:
+                activations[layer_idx] = hidden[:, -1, :].detach().cpu().float().numpy()
+            elif hidden.dim() == 2:
+                activations[layer_idx] = hidden[-1, :].unsqueeze(0).detach().cpu().float().numpy()
+            else:
+                raise ValueError(f"Unexpected hidden state shape: {hidden.shape}")
         return hook
 
     hooks = []
