@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=cm_probe_baseline
+#SBATCH -A scavenger-h200
+#SBATCH -p scavenger-h200
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --gres=gpu:h200:1
+#SBATCH --time=24:00:00
+#SBATCH --output=output/logs/probing/extract_baseline_%j.log
+#SBATCH --error=output/logs/probing/extract_baseline_%j.err
+#SBATCH --requeue
+#SBATCH --exclude=dcc-h200-gpu-05
+
+set -euo pipefail
+
+cd ~/storage/CLARIMOL
+
+export CONDARC=/work/gc237/.condarc
+export HF_HOME=/work/gc237/.cache/huggingface
+export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token 2>/dev/null || cat ~/.cache/huggingface/token)
+
+source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
+conda activate /work/gc237/conda_envs/clarimol
+
+mkdir -p output/logs/probing
+mkdir -p output/probing
+
+BASE_MODEL="meta-llama/Llama-3.1-8B-Instruct"
+DATA_DIR="data/test"
+OUTPUT_FILE="output/probing/llama_baseline.npz"
+
+echo "Baseline representation extraction (no LoRA adapter)"
+echo "Base model: ${BASE_MODEL}"
+echo "Test data: ${DATA_DIR}"
+echo "Output: ${OUTPUT_FILE}"
+
+python scripts/extract_representations_baseline.py \
+    --base-model "${BASE_MODEL}" \
+    --data-dir "${DATA_DIR}" \
+    --output "${OUTPUT_FILE}" \
+    --samples-per-task 1000 \
+    --seed 42
+
+echo "Baseline representation extraction complete."
