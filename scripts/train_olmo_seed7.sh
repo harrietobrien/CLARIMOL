@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/multi_seed/olmo_s7_%j.log
 #SBATCH --error=output/logs/multi_seed/olmo_s7_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # OLMo-7B seed 7 only (seed 99 already complete).
 #
