@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/persample/persample_g2_%j.log
 #SBATCH --error=output/logs/persample/persample_g2_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # GPU 2: Per-sample eval for Qwen-7B, Qwen3-8B + ZINC-trained -> ChEMBL transfer
 #

@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/persample/persample_g1_%j.log
 #SBATCH --error=output/logs/persample/persample_g1_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # GPU 1: Per-sample eval for LLaMA, Mistral, OLMo
 # Produces predictions.jsonl for bootstrap CIs, McNemar tests, error analysis

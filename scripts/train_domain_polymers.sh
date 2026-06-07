@@ -5,7 +5,6 @@
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --output=output/logs/domain_transfer/polymers_%j.log

@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/multi_seed/extra_seeds_%j.log
 #SBATCH --error=output/logs/multi_seed/extra_seeds_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Additional seeds (7, 99) for LLaMA-8B and OLMo-7B.
 # Goes from 3 to 5 seeds, matching Mistral-7B.

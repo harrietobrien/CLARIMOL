@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/lr_lora/lora_sweep_c_%j.log
 #SBATCH --error=output/logs/lr_lora/lora_sweep_c_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # LoRA sweep batch C: remaining 8 configs to complete 4x5 grid
 # r32/{a16,a128,a256}, r64/{a16,a256}, r128/{a16,a32,a64}

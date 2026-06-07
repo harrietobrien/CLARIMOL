@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/probing/extract_layerwise_%j.log
 #SBATCH --error=output/logs/probing/extract_layerwise_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 
 set -euo pipefail
 

@@ -95,6 +95,7 @@ def load_finetuned_model(adapter_path: str):
         device_map="auto",
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
+        attn_implementation="eager",
     )
     model = PeftModel.from_pretrained(base_model, adapter_path)
     model.eval()
@@ -114,6 +115,7 @@ def load_base_model(model_name: str):
         device_map="auto",
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
+        attn_implementation="eager",
     )
     model.eval()
     return model, tokenizer

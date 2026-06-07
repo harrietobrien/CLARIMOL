@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/domain_shift/nci_domain_%j.log
 #SBATCH --error=output/logs/domain_shift/nci_domain_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # NCI DTP domain transfer: train on NCI drug compounds (263K),
 # evaluate cross-domain on NCI and ZINC test sets.

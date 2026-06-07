@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/scaling/smolm_%j.log
 #SBATCH --error=output/logs/scaling/smolm_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Model scale sweep: SmolLM2-1.7B on SMILES parsing tasks.
 # Tests whether parsing ability scales with model size.

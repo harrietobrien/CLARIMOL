@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/persample/persample_seeds_%j.log
 #SBATCH --error=output/logs/persample/persample_seeds_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Per-sample eval on seed_137 and seed_2024 for LLaMA-8B
 # Enables cross-seed error correlation analysis
