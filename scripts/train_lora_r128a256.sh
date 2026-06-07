@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/lr_lora/r128a256_%j.log
 #SBATCH --error=output/logs/lr_lora/r128a256_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # LoRA r=128, alpha=256 — completes the heatmap at highest effective LR
 # eta_eff = 1e-4 * 256/128 = 2e-4

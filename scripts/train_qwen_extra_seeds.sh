@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/multi_seed/qwen_seeds_%j.log
 #SBATCH --error=output/logs/multi_seed/qwen_seeds_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Extra seeds (7, 99) for Qwen2.5-7B and Qwen3-8B to bring all models to 5 seeds.
 #

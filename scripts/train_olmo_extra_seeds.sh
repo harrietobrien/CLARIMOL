@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/multi_seed/olmo_seeds_%j.log
 #SBATCH --error=output/logs/multi_seed/olmo_seeds_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # OLMo-7B seeds 7 and 99 (failed to run in train_extra_seeds.sh
 # because LLaMA consumed the full 24h wall-clock).

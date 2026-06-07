@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/lr_lora/lora_sweep_%j.log
 #SBATCH --error=output/logs/lr_lora/lora_sweep_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Fill in missing LoRA landscape cells.
 # Runs each config sequentially: train + eval.

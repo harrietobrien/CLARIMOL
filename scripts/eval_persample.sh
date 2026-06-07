@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/persample/persample_%A_%a.log
 #SBATCH --error=output/logs/persample/persample_%A_%a.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #SBATCH --array=0-4
 
 source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh

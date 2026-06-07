@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/scaling/smolm360_%j.log
 #SBATCH --error=output/logs/scaling/smolm360_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Model scale sweep: SmolLM2-360M on SMILES parsing tasks.
 # Adds 360M as a third scale point (360M, 1.7B, 7-8B).

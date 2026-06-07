@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/domain_shift/mixed_domain_%j.log
 #SBATCH --error=output/logs/domain_shift/mixed_domain_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Mixed-domain training: ZINC + COD combined, then evaluate on both
 # Tests whether domain mixing improves cross-domain generalization

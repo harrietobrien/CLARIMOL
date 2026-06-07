@@ -11,7 +11,6 @@
 #SBATCH --output=output/logs/multi_seed/qwen3_seeds_%j.log
 #SBATCH --error=output/logs/multi_seed/qwen3_seeds_%j.err
 #SBATCH --requeue
-#SBATCH --exclude=dcc-h200-gpu-05
 #
 # Qwen3-8B seeds 7 and 99.
 #
