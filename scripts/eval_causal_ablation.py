@@ -72,15 +72,17 @@ TASKS = [
 
 
 class HeadAblationHook:
-    """Forward hook that zeros out the output of specific attention heads.
+    """Forward pre-hook on o_proj that zeros specific head outputs before projection.
 
-    Registered on the self_attn module of a transformer layer. The hook
-    intercepts the attention output tensor and zeros the contribution of
-    the specified heads before it passes through o_proj.
+    Registered on the o_proj linear layer within self_attn. The pre-hook
+    intercepts the input to o_proj (which is the concatenated per-head
+    attention outputs) and zeros the specified heads before the output
+    projection mixes them. This is the correct ablation point — after
+    per-head attention computation but before the projection that
+    combines heads into the residual stream.
 
-    For LLaMA-style architectures, the self_attn module returns a tuple
-    where element 0 is the attention output of shape (batch, seq, hidden_dim).
-    Each head occupies a contiguous slice of size head_dim along the last axis.
+    The input to o_proj has shape (batch, seq_len, num_heads * head_dim)
+    where each head occupies a contiguous slice of size head_dim.
     """
 
     def __init__(self, head_indices: list[int], num_heads: int, head_dim: int):
@@ -88,16 +90,15 @@ class HeadAblationHook:
         self.num_heads = num_heads
         self.head_dim = head_dim
 
-    def __call__(self, module, args, output):
-        # output is a tuple; element 0 is the hidden state tensor
+    def __call__(self, module, args):
+        # args[0] is the input tensor to o_proj
         # Shape: (batch, seq_len, num_heads * head_dim)
-        hidden = output[0]
+        hidden = args[0]
         for head_idx in self.head_indices:
             start = head_idx * self.head_dim
             end = start + self.head_dim
             hidden[:, :, start:end] = 0.0
-        # Return modified output tuple
-        return (hidden,) + output[1:]
+        return (hidden,) + args[1:]
 
 
 def get_layer_modules(model):
@@ -147,10 +148,12 @@ def install_ablation_hooks(
     handles = []
     for layer_idx, head_list in layer_to_heads.items():
         hook = HeadAblationHook(head_list, num_heads, head_dim)
-        handle = layers[layer_idx].self_attn.register_forward_hook(hook)
+        # Register on o_proj (pre-hook) to zero heads before the output projection
+        handle = layers[layer_idx].self_attn.o_proj.register_forward_pre_hook(hook)
         handles.append(handle)
         logger.info(
-            "Installed ablation hook on layer %d for heads %s", layer_idx, head_list
+            "Installed ablation pre-hook on layer %d o_proj for heads %s",
+            layer_idx, head_list,
         )
 
     return handles
@@ -268,7 +271,7 @@ def evaluate_condition(
         }
         logger.info(
             "[%s] %s: accuracy=%.4f (%d/%d)",
-            condition_name, task, accuracy, correct, len(samples),
+            condition_name, task, result.accuracy, result.correct, result.total,
         )
 
     remove_hooks(handles)

@@ -42,7 +42,7 @@ TASKS = [
 ]
 
 SAMPLES_PER_TASK = 200
-FEW_SHOT_COUNTS = [0, 3, 5]
+FEW_SHOT_COUNTS = [0, 1, 5]
 CHECKPOINT_INTERVAL = 50
 MAX_REQUESTS_PER_SECOND = 10
 SEED = 42
@@ -52,10 +52,16 @@ SEED = 42
 _COST_PER_1M_IN = {
     "claude": 3.0,
     "gpt4o": 2.5,
+    "gpt4o-mini": 0.15,
+    "gemini-flash": 0.10,
+    "deepseek": 0.27,
 }
 _COST_PER_1M_OUT = {
     "claude": 15.0,
     "gpt4o": 10.0,
+    "gpt4o-mini": 0.60,
+    "gemini-flash": 0.40,
+    "deepseek": 1.10,
 }
 
 # Approximate token counts per request
@@ -78,6 +84,7 @@ class EvalConfig:
     train_data_dir: Path
     output_dir: Path
     dry_run: bool = False
+    randomize: bool = False
 
 
 @dataclass
@@ -107,6 +114,31 @@ def _load_json_samples(path: Path) -> list[Sample]:
         )
         for entry in raw
     ]
+
+
+def _randomize_smiles(smiles: str) -> str:
+    """Produce a non-canonical SMILES string via RDKit random traversal.
+
+    For fragment assembly (two fragments separated by ' . '), each
+    fragment is randomized independently.
+    """
+    from rdkit import Chem
+
+    if " . " in smiles:
+        parts = smiles.split(" . ")
+        randomized = []
+        for part in parts:
+            mol = Chem.MolFromSmiles(part)
+            if mol is not None:
+                randomized.append(Chem.MolToSmiles(mol, doRandom=True))
+            else:
+                randomized.append(part)
+        return " . ".join(randomized)
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is not None:
+        return Chem.MolToSmiles(mol, doRandom=True)
+    return smiles
 
 
 def _subsample(samples: list[Sample], n: int, rng: random.Random) -> list[Sample]:
@@ -266,13 +298,82 @@ class GPT4oClient:
         return _exponential_backoff(_call)
 
 
-def _get_client(model_key: str) -> ClaudeClient | GPT4oClient:
+class GPT4oMiniClient(GPT4oClient):
+    """GPT-4o-mini: cheaper, faster, good for cost-effective sweeps."""
+    MODEL_ID = "gpt-4o-mini"
+    DISPLAY_NAME = "gpt-4o-mini"
+
+
+class GeminiFlashClient:
+    """Google Gemini Flash via the google-genai SDK."""
+
+    MODEL_ID = "gemini-2.0-flash"
+    DISPLAY_NAME = "gemini-flash"
+
+    def __init__(self) -> None:
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        self._model = genai.GenerativeModel(self.MODEL_ID)
+
+    def complete(self, messages: list[dict[str, str]], max_tokens: int = 128) -> str:
+        import google.generativeai as genai
+
+        # Convert chat messages to Gemini format
+        parts = []
+        for msg in messages:
+            role = "user" if msg["role"] in ("user", "system") else "model"
+            parts.append({"role": role, "parts": [msg["content"]]})
+
+        def _call() -> str:
+            response = self._model.generate_content(
+                parts,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=max_tokens, temperature=0.0
+                ),
+            )
+            return response.text.strip()
+
+        return _exponential_backoff(_call)
+
+
+class DeepSeekClient:
+    """DeepSeek via OpenAI-compatible API."""
+
+    MODEL_ID = "deepseek-chat"
+    DISPLAY_NAME = "deepseek"
+
+    def __init__(self) -> None:
+        import openai
+        self._client = openai.OpenAI(
+            api_key=os.environ["DEEPSEEK_API_KEY"],
+            base_url="https://api.deepseek.com",
+        )
+
+    def complete(self, messages: list[dict[str, str]], max_tokens: int = 128) -> str:
+        def _call() -> str:
+            response = self._client.chat.completions.create(
+                model=self.MODEL_ID,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+            return response.choices[0].message.content.strip()
+
+        return _exponential_backoff(_call)
+
+
+def _get_client(model_key: str):
     """Instantiate the appropriate API client for a model key."""
-    if model_key == "claude":
-        return ClaudeClient()
-    if model_key == "gpt4o":
-        return GPT4oClient()
-    raise ValueError(f"Unknown model key: {model_key!r}")
+    clients = {
+        "claude": ClaudeClient,
+        "gpt4o": GPT4oClient,
+        "gpt4o-mini": GPT4oMiniClient,
+        "gemini-flash": GeminiFlashClient,
+        "deepseek": DeepSeekClient,
+    }
+    if model_key not in clients:
+        raise ValueError(f"Unknown model key: {model_key!r}. Options: {list(clients)}")
+    return clients[model_key]()
 
 
 def _checkpoint_path(output_dir: Path, task: str) -> Path:
@@ -378,6 +479,12 @@ def evaluate_task(
             per_sample_rng = random.Random(SEED + idx)
             examples = _select_few_shot_examples(train_samples, config.n_shot, per_sample_rng)
 
+        # Optionally randomize the test sample's SMILES
+        if config.randomize:
+            from dataclasses import replace as dc_replace
+            rand_smi = _randomize_smiles(sample.smiles)
+            sample = dc_replace(sample, smiles=rand_smi)
+
         messages = _build_few_shot_messages(sample, examples, rng=rng_prompt)
 
         if config.dry_run:
@@ -443,13 +550,18 @@ def run_evaluation(
     train_data_dir: Path,
     base_output_dir: Path,
     dry_run: bool = False,
+    randomize: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """
     Run evaluation for one model × shot-count combination across all tasks.
 
     Returns dict mapping task_name → metrics dict.
     """
-    display_name = {"claude": "claude-sonnet", "gpt4o": "gpt-4o"}[model_key]
+    display_names = {
+        "claude": "claude-sonnet", "gpt4o": "gpt-4o", "gpt4o-mini": "gpt-4o-mini",
+        "gemini-flash": "gemini-flash", "deepseek": "deepseek",
+    }
+    display_name = display_names.get(model_key, model_key)
     output_dir = base_output_dir / display_name / str(n_shot)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -486,6 +598,7 @@ def run_evaluation(
             train_data_dir=train_data_dir,
             output_dir=output_dir,
             dry_run=dry_run,
+            randomize=randomize,
         )
 
         task_result = evaluate_task(client, config, limiter)
@@ -511,7 +624,11 @@ def dry_run_report(model_keys: list[str], n_shots: list[int]) -> None:
     print(header)
     print("-" * len(header))
     for mkey in model_keys:
-        display = {"claude": "claude-sonnet", "gpt4o": "gpt-4o"}[mkey]
+        _display_map = {
+            "claude": "claude-sonnet", "gpt4o": "gpt-4o", "gpt4o-mini": "gpt-4o-mini",
+            "gemini-flash": "gemini-flash", "deepseek": "deepseek",
+        }
+        display = _display_map.get(mkey, mkey)
         for n_shot in n_shots:
             n_requests = len(TASKS) * SAMPLES_PER_TASK
             cost = _estimate_cost(mkey, n_shot, len(TASKS), SAMPLES_PER_TASK)
@@ -538,7 +655,7 @@ def main() -> None:
     parser.add_argument(
         "--models",
         default="claude,gpt4o",
-        help="Comma-separated list of models to evaluate. Options: claude, gpt4o.",
+        help="Comma-separated list of models to evaluate. Options: claude, gpt4o, gpt4o-mini, gemini-flash, deepseek.",
     )
     parser.add_argument(
         "--shots",
@@ -564,6 +681,11 @@ def main() -> None:
         help="Root output directory. Results saved to {output_dir}/{model}/{n_shot}/results.json.",
     )
     parser.add_argument(
+        "--randomize",
+        action="store_true",
+        help="Randomize SMILES before evaluation (tests robustness to non-canonical input).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print cost estimate and exit without making API calls.",
@@ -574,7 +696,7 @@ def main() -> None:
     n_shots = [int(s.strip()) for s in args.shots.split(",") if s.strip()]
 
     # Validate model keys
-    valid_keys = {"claude", "gpt4o"}
+    valid_keys = {"claude", "gpt4o", "gpt4o-mini", "gemini-flash", "deepseek"}
     invalid = set(model_keys) - valid_keys
     if invalid:
         parser.error(f"Unknown model keys: {invalid}. Valid options: {valid_keys}")
@@ -609,6 +731,7 @@ def main() -> None:
                 train_data_dir=args.train_data,
                 base_output_dir=args.output_dir,
                 dry_run=False,
+                randomize=args.randomize,
             )
 
     logger.info("All evaluations complete.")

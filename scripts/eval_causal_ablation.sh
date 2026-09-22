@@ -10,8 +10,13 @@
 #SBATCH --output=output/logs/probing/head_ablation_%j.log
 #SBATCH --error=output/logs/probing/head_ablation_%j.err
 
-source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
+set -euo pipefail
+
 export CONDARC=/work/gc237/.condarc
+export HF_HOME=/work/gc237/.cache/huggingface
+export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token 2>/dev/null || cat ~/.cache/huggingface/token)
+
+source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
 conda activate /work/gc237/conda_envs/clarimol
 
 cd ~/storage/CLARIMOL
