@@ -1,12 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=cm_head_ablation
-#SBATCH --partition=scavenger-h200
-#SBATCH --gres=gpu:1
-#SBATCH --mem=64G
+#SBATCH -A scavenger-h200
+#SBATCH -p scavenger-h200
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=24:00:00
+#SBATCH --requeue
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
 #SBATCH --output=output/logs/probing/head_ablation_%j.log
 #SBATCH --error=output/logs/probing/head_ablation_%j.err
-#SBATCH --requeue
 
 source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
 export CONDARC=/work/gc237/.condarc
