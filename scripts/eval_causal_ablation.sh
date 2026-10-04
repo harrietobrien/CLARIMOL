@@ -14,7 +14,7 @@ set -euo pipefail
 
 export CONDARC=/work/gc237/.condarc
 export HF_HOME=/work/gc237/.cache/huggingface
-export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token 2>/dev/null || cat ~/.cache/huggingface/token)
+export HF_TOKEN=$(cat /work/gc237/.cache/huggingface/token 2>/dev/null || cat ~/.cache/huggingface/token 2>/dev/null || hf auth token 2>/dev/null || true)
 
 source /opt/apps/rhel9/Anaconda3-2024.02/etc/profile.d/conda.sh
 conda activate /work/gc237/conda_envs/clarimol
