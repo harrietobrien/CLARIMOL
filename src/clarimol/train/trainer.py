@@ -174,13 +174,12 @@ def run_training(config: TrainConfig) -> str:
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     use_eval = eval_ds is not None
-    training_args = trl.SFTConfig(
+    sft_kwargs = dict(
         output_dir=str(output_dir),
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         learning_rate=config.learning_rate,
         weight_decay=config.weight_decay,
-        warmup_ratio=config.warmup_ratio,
         num_train_epochs=config.epochs,
         lr_scheduler_type=config.lr_scheduler,
         max_grad_norm=config.max_grad_norm,
@@ -200,6 +199,13 @@ def run_training(config: TrainConfig) -> str:
         report_to="wandb" if config.use_wandb else "none",
         run_name=config.wandb_project,
     )
+    import inspect
+    if "warmup_ratio" in inspect.signature(trl.SFTConfig).parameters:
+        sft_kwargs["warmup_ratio"] = config.warmup_ratio
+    else:
+        total_steps = len(train_ds) // (config.batch_size * config.gradient_accumulation_steps) * config.epochs
+        sft_kwargs["warmup_steps"] = max(1, int(total_steps * config.warmup_ratio))
+    training_args = trl.SFTConfig(**sft_kwargs)
     trainer = trl.SFTTrainer(
         model=model,
         processing_class=tokenizer,
