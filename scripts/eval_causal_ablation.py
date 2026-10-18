@@ -5,16 +5,20 @@ Tests whether identified attention head circuits are causally responsible
 for task performance by zeroing out specific heads during inference and
 measuring per-task accuracy changes.
 
-Three conditions:
+Four conditions:
   (1) No ablation (control baseline)
   (2) Ring-circuit heads ablated (top 10 by ring-digit attention delta)
-  (3) Random same-count heads ablated (permutation control)
+  (3) Random same-count heads ablated (layer-matched permutation control)
+  (4) Distant-layer control (10 heads from layers 0-5, far from critical layers)
 
 If ring-circuit heads are genuinely specialized:
   - ring_counting accuracy should drop significantly
   - fragment_assembly / canonicalization may drop modestly
   - functional_group / chain_length should be minimally affected
   - random-head ablation should produce smaller, more uniform drops
+  - distant-layer ablation should cause minimal damage, showing that
+    the effect is specific to the ring-circuit layers (13-16) and not
+    a generic consequence of removing any 10 heads
 
 The ring-circuit heads were identified from attention_patterns.npz as
 the 10 heads with the largest fine-tuned minus baseline ring-digit
@@ -321,7 +325,7 @@ def main():
         logger.info("Output file exists: %s. Loading and checking for completeness.", output_file)
         with open(output_file) as f:
             existing = json.load(f)
-        if all(k in existing for k in ["no_ablation", "ring_circuit", "random_controls"]):
+        if all(k in existing for k in ["no_ablation", "ring_circuit", "random_controls", "distant_layer_control"]):
             logger.info("All conditions already completed. Exiting.")
             return
 
@@ -405,6 +409,7 @@ def main():
         layer_counts[layer_idx] = layer_counts.get(layer_idx, 0) + 1
 
     all_random_results = []
+    all_random_heads = []
     ctrl_rng = random.Random(args.seed + 1000)
 
     for ctrl_idx in range(args.n_random_controls):
@@ -418,6 +423,7 @@ def main():
             chosen = ctrl_rng.sample(available, min(count, len(available)))
             random_heads.extend(chosen)
 
+        all_random_heads.append(random_heads)
         logger.info(
             "Random control %d/%d: heads=%s",
             ctrl_idx + 1, args.n_random_controls, random_heads,
@@ -442,22 +448,49 @@ def main():
         }
     all_results["random_controls"] = avg_random
 
+    # Condition 4: Distant-layer control
+    # Ablate 10 heads from layers 0-5 (far from the critical layers 13-16).
+    # Tests whether ANY 10-head ablation causes damage, or only ablation in
+    # the ring-circuit layers. Addresses the reviewer concern that the
+    # layer-matched control shows layers 13-16 are globally important rather
+    # than that ring heads are specifically specialized.
+    logger.info("=== CONDITION 4: Distant-layer control (layers 0-5) ===")
+    distant_rng = random.Random(args.seed + 2000)
+    distant_heads = []
+    for layer_idx in range(5):
+        chosen = distant_rng.sample(range(n_heads), 2)
+        distant_heads.extend([(layer_idx, h) for h in chosen])
+    logger.info("Distant-layer control heads: %s", distant_heads)
+
+    all_results["distant_layer_control"] = evaluate_condition(
+        model, tokenizer, task_samples, "distant_layer_ctrl",
+        heads_to_ablate=distant_heads,
+        max_samples=args.max_samples,
+        batch_size=args.batch_size,
+    )
+
     # Summary
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 90)
     print("CAUSAL ABLATION RESULTS SUMMARY")
-    print("=" * 70)
-    print(f"{'Task':<22} {'Intact':>8} {'Ring abl':>8} {'Delta':>8} {'Rnd ctrl':>8} {'Rnd delta':>8}")
-    print("-" * 70)
+    print("=" * 90)
+    print(
+        f"{'Task':<22} {'Intact':>8} {'Ring abl':>8} {'Delta':>8} "
+        f"{'Rnd ctrl':>8} {'Rnd delta':>8} {'Distant':>8} {'Dst delta':>9}"
+    )
+    print("-" * 90)
     for task in TASKS:
         intact = all_results["no_ablation"][task]["accuracy"]
         ring = all_results["ring_circuit"][task]["accuracy"]
         rnd = all_results["random_controls"][task]["accuracy_mean"]
         rnd_std = all_results["random_controls"][task]["accuracy_std"]
+        dist = all_results["distant_layer_control"][task]["accuracy"]
         ring_delta = ring - intact
         rnd_delta = rnd - intact
+        dist_delta = dist - intact
         print(
             f"{task:<22} {intact:>8.4f} {ring:>8.4f} {ring_delta:>+8.4f} "
-            f"{rnd:>7.4f}±{rnd_std:.3f} {rnd_delta:>+8.4f}"
+            f"{rnd:>7.4f}±{rnd_std:.3f} {rnd_delta:>+8.4f} "
+            f"{dist:>8.4f} {dist_delta:>+9.4f}"
         )
 
     # Save results
@@ -469,9 +502,10 @@ def main():
         "seed": args.seed,
         "ring_circuit_heads": RING_CIRCUIT_HEADS,
         "random_control_heads_per_trial": [
-            [(l, h) for l, h in ctrl_result_heads]
-            for ctrl_result_heads in []  # not stored above; add if needed
+            [(l, h) for l, h in trial_heads]
+            for trial_heads in all_random_heads
         ],
+        "distant_layer_control_heads": [(l, h) for l, h in distant_heads],
     }
 
     with open(output_file, "w") as f:

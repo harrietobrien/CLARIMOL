@@ -7,11 +7,16 @@ p = os.path.join(base, "ablation_heads/ablation_results.json")
 if os.path.exists(p):
     d = json.load(open(p))
     print("=== CAUSAL ABLATION ===")
+    has_distant = "distant_layer_control" in d
     for t in ["functional_group","ring_counting","chain_length","canonicalization","fragment_assembly"]:
         i = d["no_ablation"][t]["accuracy"]
         r = d["ring_circuit"][t]["accuracy"]
         c = d["random_controls"][t]["accuracy_mean"]
-        print(f"  {t}: intact={i:.4f} ring_abl={r:.4f} delta={r-i:+.4f} rnd={c:.4f}")
+        line = f"  {t}: intact={i:.4f} ring_abl={r:.4f} delta={r-i:+.4f} rnd={c:.4f}"
+        if has_distant:
+            dst = d["distant_layer_control"][t]["accuracy"]
+            line += f" distant={dst:.4f} dst_delta={dst-i:+.4f}"
+        print(line)
 else:
     print("No ablation results found")
 

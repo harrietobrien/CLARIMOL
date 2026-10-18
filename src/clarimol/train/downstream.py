@@ -121,23 +121,70 @@ def _load_model_tokenizer(config: DownstreamConfig):
     model_path = Path(config.model_name)
     is_peft_checkpoint = (model_path / "adapter_config.json").exists()
 
+    # Track the resolved base model path so the downstream adapter's
+    # adapter_config.json records the correct base_model_name_or_path.
+    # For the pretrained path this will be the merged model directory;
+    # for the direct path it stays None (PEFT handles it automatically).
+    resolved_base_path: str | None = None
+
     if is_peft_checkpoint:
         import json
+        import gc
         with open(model_path / "adapter_config.json") as f:
             adapter_cfg = json.load(f)
         base_model_name = adapter_cfg["base_model_name_or_path"]
-        logger.info("Loading base model %s and merging pre-trained adapter from %s",
-                     base_model_name, config.model_name)
+
+        # Merged base path: store the merged (pretrained) model so the
+        # downstream adapter_config.json references it instead of the
+        # raw HuggingFace model name. This fixes evaluation-time loading
+        # (BUG C2) by ensuring the downstream adapter knows its base
+        # already contains the pretrained LoRA contribution.
+        output_dir = Path(config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        merged_base_path = output_dir / "_merged_base"
+
+        if merged_base_path.exists() and (merged_base_path / "config.json").exists():
+            logger.info("Reusing previously merged base at %s", merged_base_path)
+        else:
+            # Step 1: Load base model in FULL PRECISION (not 4-bit).
+            # merge_and_unload() is ill-defined on quantized weights
+            # (BUG C3); performing the merge in full precision avoids
+            # weight corruption.
+            logger.info(
+                "Loading base model %s in full precision for merge with "
+                "pre-trained adapter from %s",
+                base_model_name, config.model_name,
+            )
+            # noinspection PyTypeChecker
+            base_model_fp = AutoModelForCausalLM.from_pretrained(
+                base_model_name,
+                torch_dtype=compute_dtype,
+                device_map=device_map,
+                trust_remote_code=True,
+            )
+
+            # Step 2: Merge the pretrained adapter on full-precision weights.
+            peft_model = PeftModel.from_pretrained(base_model_fp, config.model_name)
+            merged_model = peft_model.merge_and_unload()
+
+            # Step 3: Save merged model so it can be reloaded in 4-bit.
+            logger.info("Saving merged base model to %s", merged_base_path)
+            merged_model.save_pretrained(str(merged_base_path))
+            del merged_model, peft_model, base_model_fp
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        # Step 4: Reload the merged model WITH 4-bit quantization.
+        logger.info("Reloading merged base from %s with 4-bit quantization", merged_base_path)
         # noinspection PyTypeChecker
-        base_model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
-            base_model_name,
+        model = AutoModelForCausalLM.from_pretrained(  # type: PreTrainedModel
+            str(merged_base_path),
             quantization_config=bnb_config,
             device_map=device_map,
             trust_remote_code=True,
         )
-        # Load and merge the pre-training adapter
-        model = PeftModel.from_pretrained(base_model, config.model_name)
-        model = model.merge_and_unload()
+
         # noinspection PyTypeChecker
         tokenizer = AutoTokenizer.from_pretrained(  # type: PreTrainedTokenizerBase
             config.model_name,
@@ -145,6 +192,11 @@ def _load_model_tokenizer(config: DownstreamConfig):
             padding_side="right",
             trust_remote_code=True,
         )
+        # Also save the tokenizer alongside the merged base so evaluation
+        # can load it from the same path if needed.
+        tokenizer.save_pretrained(str(merged_base_path))
+
+        resolved_base_path = str(merged_base_path.resolve())
     else:
         logger.info("Loading base model from %s", config.model_name)
         # noinspection PyTypeChecker
@@ -180,6 +232,18 @@ def _load_model_tokenizer(config: DownstreamConfig):
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_config)
+
+    # When the base is a merged pretrained model, override
+    # base_model_name_or_path so the saved adapter_config.json
+    # points to the merged directory, not the original HF model name.
+    # This ensures eval/downstream.py loads the correct base.
+    if resolved_base_path is not None:
+        model.peft_config["default"].base_model_name_or_path = resolved_base_path
+        logger.info(
+            "Downstream adapter base_model_name_or_path set to %s",
+            resolved_base_path,
+        )
+
     model.print_trainable_parameters()
     return model, tokenizer
 
