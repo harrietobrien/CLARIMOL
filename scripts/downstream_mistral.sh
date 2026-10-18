@@ -50,7 +50,7 @@ for TASK in "${TASKS[@]}"; do
         continue
     fi
     echo "--- Training $TASK (pretrained) ---"
-    python -m clarimol downstream-train --no-unsloth --no-wandb \
+    python -m clarimol downstream-train --no-unsloth --no-wandb --bf16 \
         --model "$MISTRAL_PRETRAINED" \
         --data-dir data/mol_instructions \
         --task "$TASK" \
@@ -83,7 +83,7 @@ for TASK in "${TASKS[@]}"; do
         continue
     fi
     echo "--- Training $TASK (direct) ---"
-    python -m clarimol downstream-train --no-unsloth --no-wandb \
+    python -m clarimol downstream-train --no-unsloth --no-wandb --bf16 \
         --model "mistralai/Mistral-7B-Instruct-v0.3" \
         --data-dir data/mol_instructions \
         --task "$TASK" \
